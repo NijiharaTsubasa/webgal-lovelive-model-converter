@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Character Package Lab</title>
+  </head>
+  <body>
+    <main id="app">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">ASSETBUNDLE / GLB VALIDATION SANDBOX</p>
+          <h1>Character Package Lab</h1>
+        </div>
+        <div id="status" class="status">正在读取资源包...</div>
+      </header>
+      <section class="workspace">
+        <aside class="panel controls">
+          <label>资源类型<select id="package-mode">
+            <option value="integrated">一体化模型（Hasu 等）</option>
+            <option value="composed">头身组合（Bang Dream 等）</option>
+          </select></label>
+          <label id="character-row">角色包<select id="character"></select></label>
+          <label id="head-row" hidden>头部<select id="head"></select></label>
+          <label id="body-row" hidden>身体<select id="body"></select></label>
+          <label>表情来源<select id="face-source"><option value="native">模型自带表情</option><option value="garupa">BanG Dream 参数表情</option></select></label>
+          <label id="parameter-expression-row" hidden>参数表情<select id="parameter-expression"><option value="">无 EXP（保留动作表情）</option></select></label>
+          <p id="parameter-face-note" hidden></p>
+          <label id="native-expression-row">面部表情<select id="expression"><option value="">默认表情</option></select></label>
+          <div id="expression-groups"></div>
+          <label>双眼开合 <output id="eye-open-value">1.00</output><input id="eye-open" type="range" min="0" max="1" step="0.01" value="1" /></label>
+          <label>默认说话强度 <output id="mouth-open-value">0.00</output><input id="mouth-open" type="range" min="0" max="1" step="0.01" value="0" /></label>
+          <label id="parameter-speech-row" hidden><input id="parameter-speech" type="checkbox" />用滑杆接管参数嘴巴（取消则保留 MTN／EXP）</label>
+          <label>身体动作来源<select id="motion-source"><option value="standard">标准三维动作</option><option value="garupa">BanG Dream 参数动作</option></select></label>
+          <label>通用动作<select id="motion"><option value="">静止</option></select></label>
+          <button id="stop-motion" type="button" disabled>结束当前动作</button>
+          <label class="toggle"><input id="parameterized-rendering-toggle" type="checkbox" checked /> 启用 Shader</label>
+          <label class="toggle"><input id="physics-toggle" type="checkbox" checked /> 启用骨骼物理（防穿模对照）</label>
+          <button id="reset" type="button">重置镜头</button>
+          <article class="notice">
+            <strong>动作状态</strong>
+            <p id="motion-note">选择动作后显示实际支持状态。</p>
+          </article>
+          <article class="facts">
+            <span>网格</span><b id="mesh-count">0</b>
+            <span>表情</span><b id="expression-count">0</b>
+            <span>骨骼</span><b id="bone-count">0</b>
+          </article>
+        </aside>
+        <div id="viewport" aria-label="3D 角色预览"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

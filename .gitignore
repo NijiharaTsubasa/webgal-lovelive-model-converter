@@ -1,0 +1,15 @@
+node_modules/
+dist/
+output_packages/
+baked_motions/
+reference/
+public/lib/live2d.min.js
+__pycache__/
+*.py[cod]
+.pytest_cache/
+test-results/
+converter/unity_baker/Library/
+converter/unity_baker/Temp/
+converter/unity_baker/Logs/
+converter/unity_baker/Obj/
+converter/unity_baker/UserSettings/
