@@ -27,6 +27,7 @@ from converter.llas.source_inventory import active_sources
 from converter.common.component_order import order_model_component
 from converter.common.idle_pose import sample_baked_pose
 from converter.common.physics import extract_model_physics
+from .skirt import build_skirt_behavior
 
 
 UNITY_VERSION = "2018.4.23f1"
@@ -165,6 +166,9 @@ def convert_model(source: Path, output_root: Path, baked_root: Path, description
                                                           face_definition['morphPoses'])]
     attach_llas_materials(exported.builder, environment)
     physics = extract_model_physics(environment, exported)
+    skirt_behavior = build_skirt_behavior(environment, exported)
+    if skirt_behavior:
+        face_definition.setdefault("behaviors", []).append(skirt_behavior)
     scale = float(exported.human_scale)
     if not math.isfinite(scale) or scale <= 0:
         raise ValueError(f"{source.name}: invalid normalized Humanoid scale {scale}")

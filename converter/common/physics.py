@@ -622,6 +622,26 @@ def extract_model_physics(environment: Any, exported: Any) -> dict[str, Any] | N
     if not springs and not cloths:
         return None
     result = {"colliders": colliders, "springs": list(springs.values())}
+    spring_indices = {node: index for index, node in enumerate(springs)}
+    collision_edges = []
+    seen_edges = set()
+    for name, component in components:
+        if name != "SwingBone" or not getattr(component, "sibling", None):
+            continue
+        start = mapping.node_index(_transform(component))
+        end = mapping.node_index(_transform(component.sibling.read()))
+        if start not in spring_indices or end not in spring_indices:
+            continue
+        pair = (spring_indices[start], spring_indices[end])
+        if pair[0] == pair[1]:
+            continue
+        indices = references(component.colliders)
+        key = (tuple(sorted(pair)), tuple(sorted(indices)))
+        if key not in seen_edges:
+            seen_edges.add(key)
+            collision_edges.append({"springs": list(pair), "colliders": indices})
+    if collision_edges:
+        result["collisionEdges"] = collision_edges
     if cloths:
         result["cloths"] = cloths
     return result
