@@ -1,8 +1,7 @@
-"""Bake a Unity Humanoid skin into the canonical neutral glTF skeleton.
+"""Express source Unity skins on the canonical Humanoid skeleton.
 
-The source inverse bind matrices are used only while evaluating the mesh at
-Unity's zero-muscle pose. The resulting geometry is stored as the new reference
-geometry and receives inverse bind matrices for the final canonical hierarchy.
+Source geometry and Morph deltas stay in their mesh coordinates. Each skin
+binding maps those coordinates into the corresponding canonical joint frame.
 """
 
 from __future__ import annotations
@@ -759,13 +758,6 @@ def _mat4_transform_point(matrix: list[float], value: tuple[float, ...] | list[f
     )
 
 
-def _normalize3(value: tuple[float, float, float]) -> tuple[float, float, float]:
-    length = sum(component * component for component in value) ** 0.5
-    if length < 1e-20:
-        return (0.0, 1.0, 0.0)
-    return tuple(component / length for component in value)
-
-
 def _mat4_transform_direction(
     matrix: list[float],
     value: tuple[float, ...] | list[float],
@@ -776,37 +768,6 @@ def _mat4_transform_direction(
         matrix[1] * x + matrix[5] * y + matrix[9] * z,
         matrix[2] * x + matrix[6] * y + matrix[10] * z,
     )
-
-
-def _mat4_transform_normal(
-    matrix: list[float],
-    value: tuple[float, ...] | list[float],
-) -> tuple[float, float, float]:
-    inverse = _mat4_inverse(matrix)
-    x, y, z = value[:3]
-    return _normalize3((
-        inverse[0] * x + inverse[1] * y + inverse[2] * z,
-        inverse[4] * x + inverse[5] * y + inverse[6] * z,
-        inverse[8] * x + inverse[9] * y + inverse[10] * z,
-    ))
-
-
-def _blend_skin_matrices(
-    joints: list[list[int]],
-    weights: list[list[float]],
-    bone_matrices: list[list[float]],
-) -> list[list[float]]:
-    result: list[list[float]] = []
-    for vertex_joints, vertex_weights in zip(joints, weights):
-        matrix = [0.0] * 16
-        for joint, weight in zip(vertex_joints, vertex_weights):
-            if weight == 0.0:
-                continue
-            source = bone_matrices[joint]
-            for index in range(16):
-                matrix[index] += weight * source[index]
-        result.append(matrix)
-    return result
 
 
 def _deduplicate_skin_joints(
@@ -828,6 +789,8 @@ def _deduplicate_skin_joints(
     for slots, weights in zip(vertex_joints, vertex_weights):
         combined: dict[int, float] = {}
         for source_slot, weight in zip(slots, weights):
+            if weight == 0.0:
+                continue
             unique_slot = source_to_unique[source_slot]
             combined[unique_slot] = combined.get(unique_slot, 0.0) + weight
         nonzero = [(slot, weight) for slot, weight in combined.items() if weight > 0.0]
@@ -837,6 +800,31 @@ def _deduplicate_skin_joints(
         remapped_joints.append((out_joints + [0, 0, 0, 0])[:4])
         remapped_weights.append((out_weights + [0.0, 0.0, 0.0, 0.0])[:4])
     return unique_nodes, remapped_joints, remapped_weights
+
+
+def _resolve_skin_bindings(
+    nodes: list[dict[str, Any]],
+    joint_nodes: list[int],
+    inverse_bind_matrices: list[list[float]],
+    vertex_joints: list[list[int]],
+    vertex_weights: list[list[float]],
+) -> tuple[list[int], list[list[float]], list[list[int]], list[list[float]]]:
+    """Merge only slots with identical joints and mesh-to-joint mappings."""
+    matrix_by_node: dict[int, list[float]] = {}
+    for node, matrix in zip(joint_nodes, inverse_bind_matrices):
+        previous = matrix_by_node.get(node)
+        if previous is not None and previous != matrix:
+            # glTF requires unique entries in skin.joints. Combining weights
+            # with distinct offsets changes their contribution to the skin.
+            raise ValueError(
+                f"Skin target {nodes[node].get('name', node)!r} has distinct source bind offsets; "
+                "a unique glTF joint cannot represent both bindings"
+            )
+        matrix_by_node[node] = matrix
+    unique, joints, weights = _deduplicate_skin_joints(
+        joint_nodes, vertex_joints, vertex_weights,
+    )
+    return unique, [matrix_by_node[node] for node in unique], joints, weights
 
 
 def _add_normalized_renderer(
@@ -874,7 +862,6 @@ def _add_normalized_renderer(
     skin_index: int | None = None
     joints: list[list[int]] = []
     weights: list[list[float]] = []
-    bind_to_neutral_per_vertex: list[list[float]] | None = None
     if renderer_bones and decoded.m_BoneIndices:
         joint_nodes: list[int] = []
         source_joint_nodes: list[int] = []
@@ -918,8 +905,7 @@ def _add_normalized_renderer(
                 f"{mesh.m_Name}: mesh has {len(bind_poses)} bind poses, "
                 f"but renderer has {len(renderer_bones)} bones"
             )
-        canonical_mesh_inverse = _mat4_inverse(canonical_world_mats[attachment_node])
-        bind_to_neutral: list[list[float]] = []
+        inverse_bind_matrices: list[list[float]] = []
         for bind_pose, source_node, joint_node, is_redirected, is_copied in zip(
             bind_poses, source_joint_nodes, joint_nodes, redirected, copied
         ):
@@ -935,42 +921,18 @@ def _add_normalized_renderer(
                     ),
                     source_world_mats[source_node],
                 )
-            bind_to_neutral.append(
+            # C(t) C(0)^-1 N(0) I keeps the source mesh-to-joint offset
+            # while expressing joint motion in the canonical reference frame.
+            inverse_bind_matrices.append(
                 _mat4_mul(
-                    _mat4_mul(canonical_mesh_inverse, neutral_joint_world),
+                    _mat4_mul(_mat4_inverse(canonical_world_mats[joint_node]), neutral_joint_world),
                     inverse_bind,
                 )
             )
 
-        bind_to_neutral_per_vertex = _blend_skin_matrices(
-            joints, weights, bind_to_neutral
+        joint_nodes, inverse_bind_matrices, joints, weights = _resolve_skin_bindings(
+            builder.document["nodes"], joint_nodes, inverse_bind_matrices, joints, weights,
         )
-        positions = [
-            _mat4_transform_point(matrix, position)
-            for matrix, position in zip(bind_to_neutral_per_vertex, positions)
-        ]
-        if normals:
-            normals = [
-                _mat4_transform_normal(matrix, normal)
-                for matrix, normal in zip(bind_to_neutral_per_vertex, normals)
-            ]
-        if tangents:
-            tangents = [
-                (*_normalize3(_mat4_transform_direction(matrix, tangent)), tangent[3])
-                for matrix, tangent in zip(bind_to_neutral_per_vertex, tangents)
-            ]
-
-        joint_nodes, joints, weights = _deduplicate_skin_joints(
-            joint_nodes, joints, weights
-        )
-
-        inverse_bind_matrices = [
-            _mat4_mul(
-                _mat4_inverse(canonical_world_mats[joint_node]),
-                canonical_world_mats[attachment_node],
-            )
-            for joint_node in joint_nodes
-        ]
         inverse_accessor = builder.add_accessor(
             inverse_bind_matrices, "MAT4", COMPONENT_FLOAT
         )
@@ -1040,7 +1002,6 @@ def _add_normalized_renderer(
         mesh,
         len(positions),
         builder,
-        bind_to_normal_per_vertex=bind_to_neutral_per_vertex,
     )
     materials = list(getattr(renderer, "m_Materials", []))
     primitives = []

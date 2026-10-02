@@ -689,8 +689,7 @@ def _strip_blendshape_asset_prefix(name: str) -> str:
     return name
 
 
-def mesh_morphs(mesh: Any, vertex_count: int, builder: GlbBuilder, *,
-                bind_to_normal_per_vertex: list[list[float]] | None = None) -> tuple[list[dict[str, int]], list[str]]:
+def mesh_morphs(mesh: Any, vertex_count: int, builder: GlbBuilder) -> tuple[list[dict[str, int]], list[str]]:
     shapes = getattr(mesh, "m_Shapes", None)
     if not shapes or not getattr(shapes, "channels", None):
         return [], []
@@ -701,15 +700,6 @@ def mesh_morphs(mesh: Any, vertex_count: int, builder: GlbBuilder, *,
         deltas = [[0.0, 0.0, 0.0] for _ in range(vertex_count)]
         for delta in shapes.vertices[frame.firstVertex:frame.firstVertex + frame.vertexCount]:
             deltas[delta.index] = [-float(delta.vertex.x), float(delta.vertex.y), float(delta.vertex.z)]
-        # If normalized, morph deltas are direction-vectors that follow the
-        # vertex's rest-pose transformation. Apply the 3x3 rotation-scaling
-        # part of each vertex's blended bind->normal matrix.
-        if bind_to_normal_per_vertex is not None:
-            for v_idx, d in enumerate(deltas):
-                if d[0] == 0.0 and d[1] == 0.0 and d[2] == 0.0:
-                    continue
-                m = bind_to_normal_per_vertex[v_idx]
-                deltas[v_idx] = mat4_transform_dir(m, d)
         minimum = [min(value[i] for value in deltas) for i in range(3)]
         maximum = [max(value[i] for value in deltas) for i in range(3)]
         targets.append({"POSITION": builder.add_accessor(

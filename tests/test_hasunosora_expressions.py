@@ -71,6 +71,7 @@ class HasunosoraExpressionTests(unittest.TestCase):
                 export = stack.enter_context(patch("converter.hasunosora.export_normalized_model", return_value=exported))
                 stack.enter_context(patch("converter.hasunosora.HasunosoraModelAdapter"))
                 stack.enter_context(patch("converter.hasunosora.extract_model_physics", return_value=None))
+                stack.enter_context(patch("converter.hasunosora.extract_sub_bone_behavior", return_value=[]))
                 stack.enter_context(patch("converter.hasunosora.shutil.copytree"))
                 motions = stack.enter_context(patch("converter.hasunosora.collect_baked_motions"))
                 motion_index = stack.enter_context(patch("converter.hasunosora.write_motion_index"))

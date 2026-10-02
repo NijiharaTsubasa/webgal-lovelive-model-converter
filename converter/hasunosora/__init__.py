@@ -56,6 +56,7 @@ from .motion import collect_baked_motions, write_motion_index
 from .materials import adapt_material
 from .source import discover_inputs
 from .identity import load_costume_motion_groups
+from .sub_bone import extract_sub_bone_behavior
 from ..common.cli import configure_output
 
 
@@ -429,6 +430,7 @@ def convert(
             adapter=HasunosoraModelAdapter(environment, root),
         )
         physics = extract_model_physics(environment, exported)
+        behaviors = extract_sub_bone_behavior(root, exported)
 
         if has_expression_controller(dependencies):
             controller_data = _expression_controller_data(environment)
@@ -449,6 +451,7 @@ def convert(
             "humanoidScale": exported.human_scale,
             **idle_defaults,
             **({"physics": physics} if physics else {}),
+            **({"behaviors": behaviors} if behaviors else {}),
         }
         config = {
             "components": [order_model_component({
