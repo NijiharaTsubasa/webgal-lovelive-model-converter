@@ -212,7 +212,9 @@ input_garupa_live2d/
 npm run export:garupa-live2d
 ```
 
-该命令将被引用的动作、表情文件复制到 `output_packages/garupa_live2d/`，生成 `config.json` 并更新预览索引。将整个 `garupa_live2d` 文件夹复制到游戏的 `figure` 目录，再由 [Terre LoveLive专版](https://github.com/NijiharaTsubasa/webgal-lovelive-terre)更新资源清单即可使用。动作和表情名称保持不变，重复执行会覆盖同名文件。
+该命令按 `model.json` 中声明的名称，将动作、表情文件复制到 `output_packages/garupa_live2d/`，生成 `config.json` 并更新预览索引。例如名称 `anon/angry01` 对应 `anon/angry01.mtn` 或 `anon/angry01.exp.json`。将整个 `garupa_live2d` 文件夹复制到游戏的 `figure` 目录，再由 [Terre LoveLive专版](https://github.com/NijiharaTsubasa/webgal-lovelive-terre)打开一次工程，自动触发更新资源清单后即可使用。重复执行会覆盖同名文件。
+
+在游戏中的参数资源目录添加或删除 `.mtn`、`.exp.json` 后，Terre 会同步更新 `config.json` 和资源清单。新增资源的名称按相对于该配置目录的实际路径生成，去掉文件扩展名。动作淡入淡出默认各为 `500` 毫秒，可在 `config.json` 中修改 `fade_in`、`fade_out`；重新索引时保留已有设置。表情淡入淡出使用 `.exp.json` 内的设置。资源全部删除后保留 `config.json`，以后添加文件仍可自动发现。
 
 ## 测试
 

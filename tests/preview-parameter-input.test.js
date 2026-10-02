@@ -27,7 +27,7 @@ test('parameter input preserves source names and fades without requiring the Liv
   const { root } = await fixture(t);
   const manifest = await readParameterInput(root);
   assert.deepEqual(manifest.components, [
-    { type: 'garupa-motion', name: 'anon/angry01', src: 'motions/PARAM_IMPORT__37/anon/angry01.mtn', fadeIn: 150, fadeOut: 250 },
+    { type: 'garupa-motion', name: 'anon/angry01', src: 'motions/PARAM_IMPORT__37/anon/angry01.mtn', fade_in: 150, fade_out: 250 },
     { type: 'garupa-expression', name: 'anon/angry01', src: 'expressions/__base__/anon/angry01.exp.json' },
   ]);
   assert.deepEqual(await readParameterInput(path.join(root, 'absent')), { components: [] });

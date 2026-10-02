@@ -21,22 +21,23 @@ test('preview canvas follows its viewport when the window grows and shrinks', { 
   });
   await page.goto(origin);
   await page.waitForFunction(() => window.__previewAspect);
-  const sizes = () => page.evaluate(() => {
-    const viewport = document.querySelector('#viewport');
-    const canvas = viewport.querySelector('canvas');
-    const rect = canvas.getBoundingClientRect();
-    return { viewport: [viewport.clientWidth, viewport.clientHeight],
-      canvas: [rect.width, rect.height], buffer: [canvas.width, canvas.height],
-      cameraAspect: window.__previewAspect() };
-  });
   for (const [width, height] of [[1920, 1080], [1024, 800]]) {
     await page.setViewportSize({ width, height });
-    await page.waitForFunction(() => {
+    const snapshot = await page.waitForFunction(({ width, height }) => {
+      if (innerWidth !== width || innerHeight !== height) return false;
       const viewport = document.querySelector('#viewport');
       const canvas = viewport.querySelector('canvas');
-      return canvas.width === viewport.clientWidth && canvas.height === viewport.clientHeight;
-    });
-    const result = await sizes();
+      const rect = canvas.getBoundingClientRect();
+      const cameraAspect = window.__previewAspect();
+      if (canvas.width !== viewport.clientWidth || canvas.height !== viewport.clientHeight
+        || Math.abs(rect.width - viewport.clientWidth) > 1
+        || Math.abs(rect.height - viewport.clientHeight) > 1
+        || Math.abs(cameraAspect - viewport.clientWidth / viewport.clientHeight) >= 1e-6) return false;
+      return { viewport: [viewport.clientWidth, viewport.clientHeight],
+        canvas: [rect.width, rect.height], buffer: [canvas.width, canvas.height], cameraAspect };
+    }, { width, height });
+    const result = await snapshot.jsonValue();
+    await snapshot.dispose();
     assert.ok(Math.abs(result.canvas[0] - result.viewport[0]) <= 1, JSON.stringify(result));
     assert.ok(Math.abs(result.canvas[1] - result.viewport[1]) <= 1, JSON.stringify(result));
     assert.ok(Math.abs(result.cameraAspect - result.viewport[0] / result.viewport[1]) < 1e-6,
