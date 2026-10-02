@@ -310,7 +310,10 @@ public static class BakePipeline
                     gameAdapter.IncludeControllerMotionClips,
                     gameAdapter.IsBodyMotionClip,
                     gameAdapter is LlasBakeAdapter ? first.SourcePrefab : null,
-                    reportHasunosoraProgress);
+                    reportHasunosoraProgress,
+                    gameAdapter is LlasBakeAdapter
+                        ? (Action<GameObject>)(source => LlasNodeScaling.Apply(source.transform))
+                        : null);
                 Debug.Log($"Motion baking done with reference: {first.Name}");
             }
         }

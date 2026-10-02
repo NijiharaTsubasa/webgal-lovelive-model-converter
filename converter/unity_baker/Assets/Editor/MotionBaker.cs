@@ -84,13 +84,15 @@ internal static class MotionBaker
         bool includeControllerClips = false,
         Func<AnimationClip, bool> isBodyClip = null,
         GameObject sourcePrefab = null,
-        bool reportHasunosoraProgress = false)
+        bool reportHasunosoraProgress = false,
+        Action<GameObject> prepareSourceInstance = null)
     {
         if (animator == null || avatar == null || !avatar.isHuman || !avatar.isValid)
             throw new ArgumentException("A valid Humanoid Animator and Avatar are required.");
 
         var reference = CaptureReferencePose(animator);
         var sourceInstance = sourcePrefab == null ? null : UnityEngine.Object.Instantiate(sourcePrefab);
+        if (sourceInstance != null) prepareSourceInstance?.Invoke(sourceInstance);
         var originalController = animator.runtimeAnimatorController;
         try
         {

@@ -78,6 +78,7 @@ internal sealed class LlasBakeAdapter : IGameBakeAdapter
     public Avatar BuildMissingAvatar(Animator animator, Avatar templateAvatar)
     {
         var root = animator.transform.root;
+        LlasNodeScaling.Apply(root);
         var transforms = root.GetComponentsInChildren<Transform>(true);
         var byName = transforms
             .GroupBy(transform => transform.name, StringComparer.Ordinal)

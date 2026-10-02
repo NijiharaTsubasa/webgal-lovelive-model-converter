@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Iterable
 from converter.llas import select_model_sources
 from converter.llas.face_batch import bake_faces_and_boards
+from converter.llas.node_scaling import scaling_for_source
 from converter.llas.source_inventory import active_sources
 from converter.common.unity_editor import default_unity_editor
 from converter.common.cli import configure_output
@@ -82,12 +83,18 @@ def _run_unity(
     try:
         for staged_name, source in staged:
             shutil.copyfile(source, stage / f"{staged_name}.assetbundle")
+        scaling_path = stage / "node-scaling.json"
+        scaling_path.write_text(json.dumps({"members": [
+            scaling_for_source(source)
+            for name, source in staged if name.startswith("model__")
+        ]}), encoding="utf-8")
         command = [
             str(unity), "-batchmode", "-quit", "-nographics",
             "-buildTarget", "Android",
             "-projectPath", str(project),
             "-executeMethod", "BakePipeline.Run",
             "-game", "llas",
+            "-llasNodeScaling", str(scaling_path),
             "-input", str(stage),
             "-output", str(output),
             "-sampleRate", str(sample_rate),
