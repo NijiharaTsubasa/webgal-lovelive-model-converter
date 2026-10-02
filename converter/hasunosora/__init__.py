@@ -55,6 +55,7 @@ from ..common.normalized_model import (
 from .motion import collect_baked_motions, write_motion_index
 from .materials import adapt_material
 from .source import discover_inputs
+from .identity import load_costume_motion_groups
 from ..common.cli import configure_output
 
 
@@ -390,6 +391,7 @@ def convert(
         shutil.rmtree(game_dir)
     game_dir.mkdir(parents=True, exist_ok=True)
     costume_labels = load_costume_labels(input_dir)
+    costume_motion_groups = load_costume_motion_groups(input_dir)
     idle_defaults = hasunosora_idle_defaults(input_dir, baked_dir)
 
     motions = []
@@ -454,6 +456,8 @@ def convert(
                 "name": package_name,
                 **({"description": costume_labels[package_name]} if package_name in costume_labels else {}),
                 "group": "hasunosora",
+                **({"motionGroup": costume_motion_groups[package_name]}
+                   if package_name in costume_motion_groups else {}),
                 **model_component,
             })],
         }

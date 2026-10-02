@@ -54,7 +54,7 @@ Live2D 立绘目录中可能有多份同名表情和动作，内容也可能被�
 
 #### 1.2 准备可选输入
 
-将莲之空解包出的 `CostumeModels.yaml` 复制进 `input_hasunosora` 目录，转换器会从其中的 Label 读取人类可读的服装名称。若没有也不影响转换。
+将莲之空解包出的 `CostumeModels.yaml` 复制进 `input_hasunosora` 目录，转换器从其中的 Label 读取服装名称，并通过 `CharactersId` 为 11 名主角生成角色级 `motionGroup`，供参数表情适配器匹配。缺少该文件时仍可转换和播放原生表情，但无法自动选择角色的参数表情适配器。
 
 若使用 inspix-hailstorm 下载数据包，该文件应该位于 masterdata 目录下。
 
