@@ -55,7 +55,7 @@ from ..common.normalized_model import (
 from .motion import collect_baked_motions, write_motion_index
 from .materials import adapt_material
 from .source import discover_inputs
-from .identity import load_costume_motion_groups
+from .identity import SUPPLEMENTAL_COSTUMES, load_costume_motion_groups
 from .sub_bone import extract_sub_bone_behavior
 from ..common.cli import configure_output
 
@@ -491,23 +491,25 @@ def hasunosora_idle_defaults(input_dir: Path, baked_dir: Path | None) -> dict[st
 
 
 def load_costume_labels(input_dir: Path) -> dict[str, str]:
-    """Read optional costume names from the game's CostumeModels master data."""
+    """Read master costume labels and the two supplemental source-bundle labels."""
     source = input_dir / "CostumeModels.yaml"
     if not source.is_file():
-        return {}
+        return dict(SUPPLEMENTAL_COSTUMES)
     import yaml
 
     records = yaml.safe_load(source.read_text(encoding="utf-8"))
     if not isinstance(records, list):
         raise ValueError(f"{source}: expected a list of costume records")
-    return {
+    labels = dict(SUPPLEMENTAL_COSTUMES)
+    labels.update({
         f"3d_costume_{record['Id']}": record["Label"]
         for record in records
         if isinstance(record, dict)
         and isinstance(record.get("Id"), int)
         and isinstance(record.get("Label"), str)
         and record["Label"]
-    }
+    })
+    return labels
 
 
 def _load_normalized(baked_dir: Path | None, package_name: str) -> dict[str, Any] | None:
