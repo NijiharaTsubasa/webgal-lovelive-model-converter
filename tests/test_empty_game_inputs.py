@@ -105,6 +105,9 @@ class EmptyGameInputTests(unittest.TestCase):
             (root / '3d_costume_001.assetbundle').touch()
             unity = root / 'Unity.exe'
             unity.touch()
+            managed = root / 'Data/Managed'
+            managed.mkdir(parents=True)
+            (managed / 'UnityEditor.dll').touch()
             with patch.object(sys, 'argv', ['bake', '--input', str(root), '--unity', str(unity),
                                            '--output', str(root / 'baked')]), \
                     patch('converter.bake_hasunosora.bundle_metadata', return_value=('3d_costume_001', [])), \

@@ -139,8 +139,8 @@ def run_batch(
 def main() -> None:
     configure_output()
     parser = argparse.ArgumentParser(description="Batch Hasunosora Humanoid model and motion baking.")
-    from converter.common.unity_editor import default_unity_editor
-    parser.add_argument("--unity", type=Path, default=default_unity_editor())
+    from converter.common.unity_editor import resolve_unity_editor
+    parser.add_argument("--unity", type=Path)
     parser.add_argument("--input", type=Path, default=Path("input_hasunosora"))
     parser.add_argument("--output", type=Path, default=Path("baked_motions"))
     parser.add_argument("--sample-rate", type=int, default=30)
@@ -157,7 +157,6 @@ def main() -> None:
         parser.error("sample rate and batch sizes must be positive")
     if args.max_bundles_per_batch < 2:
         parser.error("--max-bundles-per-batch must be at least 2")
-    unity = args.unity.resolve()
     input_dir = args.input.resolve()
     output = args.output.resolve()
     project = Path(__file__).resolve().parent / "unity_baker"
@@ -171,8 +170,7 @@ def main() -> None:
         return
     if not selected_models:
         raise SystemExit(f"Hasunosora motions require a character reference bundle in {input_dir}")
-    if not unity.is_file():
-        raise SystemExit(f"Unity Editor not found: {unity}")
+    unity = resolve_unity_editor(args.unity)
     if not (project / "Assets").is_dir():
         raise SystemExit(f"Unity baker project not found: {project}")
     reference = selected_models[0]

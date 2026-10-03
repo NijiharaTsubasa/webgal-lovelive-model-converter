@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from converter.common.unity_editor import default_unity_editor
+from converter.common.unity_editor import resolve_unity_editor
 from converter.common.cli import configure_output
 from typing import Any
 
@@ -327,7 +327,6 @@ def main() -> None:
     parser.add_argument(
         "--unity",
         type=Path,
-        default=default_unity_editor(),
     )
     parser.add_argument("--input", type=Path, default=Path("input_bangdream"))
     parser.add_argument(
@@ -381,6 +380,7 @@ def main() -> None:
         print(f"[verify] {len(selected)} sources, {package_count} packages, {clip_count} clips")
         return
 
+    unity = resolve_unity_editor(args.unity)
     baked_output = args.baked_output.resolve()
     baked_output.mkdir(parents=True, exist_ok=True)
     log = baked_output / "all-motions.unity.log"
@@ -394,8 +394,6 @@ def main() -> None:
         "body_reference.assetbundle": reference_body,
     }
     print(f"[bangdream:bake] reference model: {reference_body.name}", flush=True)
-    if not args.unity.is_file():
-        raise SystemExit(f"Unity Editor not found: {args.unity}")
 
     stage = Path(tempfile.mkdtemp(prefix="bangdream_motion_batch_", dir=baked_output))
     try:
@@ -405,7 +403,7 @@ def main() -> None:
             shutil.copyfile(source, stage / f"{stage_key}.assetbundle")
 
         command = [
-            str(args.unity.resolve()),
+            str(unity),
             "-batchmode",
             "-quit",
             "-nographics",

@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from converter.common.unity_editor import default_unity_editor
+from converter.common.unity_editor import resolve_unity_editor
 from converter.bangdream import discover_bundle_inputs
 from converter.common.cli import configure_output
 
@@ -32,8 +32,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Bake BanG Dream model bundles; --models-only skips their embedded clips."
     )
-    parser.add_argument("--unity", type=Path, default=default_unity_editor(),
-                        help="Unity Editor executable; defaults to UNITY_EDITOR or PATH.")
+    parser.add_argument("--unity", type=Path,
+                        help="Unity Editor executable; otherwise use UNITY_EDITOR, PATH, or Unity Hub.")
     parser.add_argument("--input", type=Path, default=Path("input_bangdream"))
     parser.add_argument("--output", type=Path, default=Path("baked_motions"))
     parser.add_argument("--sample-rate", type=int, default=30)
@@ -42,7 +42,6 @@ def main() -> None:
     parser.add_argument("--model-batch-size", type=int, default=32,
                         help="Maximum bundles loaded per Unity batch, including the shared Avatar template (minimum 2).")
     args = parser.parse_args()
-    unity = args.unity.resolve()
     if args.model_batch_size < 2:
         parser.error("--model-batch-size must be at least 2 (one template plus one model)")
     if args.sample_rate <= 0:
@@ -63,8 +62,7 @@ def main() -> None:
     if not bundles:
         print(f"[bangdream:bake:models] 输入为空: {args.input.resolve()}", flush=True)
         return
-    if not unity.is_file():
-        raise SystemExit(f"Unity Editor not found: {unity}")
+    unity = resolve_unity_editor(args.unity)
     if not (project / "Assets").is_dir():
         raise SystemExit(f"Unity baker project not found: {project}")
     output.mkdir(parents=True, exist_ok=True)

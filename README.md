@@ -24,13 +24,13 @@ python -m pip install -r requirements.txt
 npm install
 ```
 
-指定 Unity Editor 的可执行文件位置，将下面的示例路径换成您实际安装的路径：
+烘焙命令会从 PATH 查找 Unity Editor；Windows 下还会读取 Unity Hub 的安装记录。也可以指定可执行文件位置，将下面的示例路径换成您实际安装的路径：
 
 ```powershell
 $env:UNITY_EDITOR = 'D:\Unity\2022.3\Editor\Unity.exe'
 ```
 
-这项设置只对当前 PowerShell 窗口有效，每次重新打开窗口后需要再次设置。也可以在单独执行烘焙时用 `--unity` 指定路径；未指定时从 PATH 查找 Unity。
+这项设置只对当前 PowerShell 窗口有效，每次重新打开窗口后需要再次设置。单独执行烘焙时也可以用 `--unity` 指定路径。选择优先级为 `--unity`、`UNITY_EDITOR`、自动查找；启动前会检查 Editor 安装并打印选中的路径。
 
 运行测试前，执行 `npm run test:install-browser` 安装测试浏览器。
 

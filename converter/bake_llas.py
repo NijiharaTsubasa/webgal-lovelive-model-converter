@@ -19,11 +19,8 @@ from converter.llas import select_model_sources
 from converter.llas.face_batch import bake_faces_and_boards
 from converter.llas.node_scaling import scaling_for_source
 from converter.llas.source_inventory import active_sources
-from converter.common.unity_editor import default_unity_editor
+from converter.common.unity_editor import resolve_unity_editor
 from converter.common.cli import configure_output
-
-
-DEFAULT_UNITY = default_unity_editor()
 
 
 def verify_body_motion(baked_file: Path) -> None:
@@ -114,7 +111,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build LLAS Humanoid skeletons and bake skeletal motions."
     )
-    parser.add_argument("--unity", type=Path, default=DEFAULT_UNITY)
+    parser.add_argument("--unity", type=Path)
     parser.add_argument("--input", type=Path, default=Path("input_llas"))
     parser.add_argument("--output", type=Path, default=Path("baked_motions/llas"))
     parser.add_argument("--sample-rate", type=int, default=30)
@@ -126,7 +123,6 @@ def main() -> None:
     selection.add_argument("--motions-only", action="store_true")
     args = parser.parse_args()
 
-    unity = args.unity.resolve()
     project = Path(__file__).resolve().parent / "unity_baker"
     input_root = args.input.resolve()
     output = args.output.resolve()
@@ -141,8 +137,7 @@ def main() -> None:
         return
     if not models:
         raise SystemExit("at least one LLAS model is required as the Humanoid reference rig")
-    if not unity.is_file():
-        raise SystemExit(f"Unity Editor not found: {unity}")
+    unity = resolve_unity_editor(args.unity)
     output.mkdir(parents=True, exist_ok=True)
 
     generated_logs: list[Path] = []

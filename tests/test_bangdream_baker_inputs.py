@@ -35,6 +35,9 @@ class BangDreamBakerInputTests(unittest.TestCase):
                 root = Path(temporary)
                 unity = root / 'Unity.exe'
                 unity.write_bytes(b'stub')
+                managed = root / 'Data/Managed'
+                managed.mkdir(parents=True)
+                (managed / 'UnityEditor.dll').touch()
                 model = root / 'input' / role / 'one'
                 model.parent.mkdir(parents=True)
                 model.write_bytes(b'AB')

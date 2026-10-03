@@ -23,6 +23,9 @@ class HasunosoraSubsetTests(unittest.TestCase):
             inputs.mkdir()
             unity = root / "Unity.exe"
             unity.touch()
+            managed = root / 'Data/Managed'
+            managed.mkdir(parents=True)
+            (managed / 'UnityEditor.dll').touch()
             for name in ("3d_costume_001", "3d_costume_002", "mot_current"):
                 (inputs / f"{name}.assetbundle").touch()
 
