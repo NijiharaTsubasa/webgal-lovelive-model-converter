@@ -42,7 +42,11 @@ $env:UNITY_EDITOR = 'D:\Unity\2022.3\Editor\Unity.exe'
 
 WebGAL LoveLive专版支持在 glTF 3D 模型上播放《BanG Dream 少女乐团派对》游戏解包的 Live2D 动作；提供[表情适配器](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime)的模型还可播放对应的 Live2D 表情，丰富 3D 模型的表情表现。您可以复用 [WebGAL MyGO专版](https://github.com/boomwwww/webgal-mygo)社区制作的这类表情与动作。
 
-Live2D 立绘目录中可能有多份同名表情和动作，内容也可能被分别修改。为避免与这些资源混淆，需要将准备供 glTF 3D 模型使用的那份文件单独索引并打包，生成供引擎发现和加载资源的 `config.json`。输入准备及打包命令见下方[预览：Live2D 表情与动作](#live2d-表情与动作)。
+Live2D 立绘目录中可能有多份同名表情和动作，内容也可能被分别修改。为避免与这些资源混淆，需要将准备供 glTF 3D 模型使用的那份文件单独索引并打包，生成供引擎发现和加载资源的 `config.json`。
+
+当前 [WebGAL LoveLive Terre](https://github.com/NijiharaTsubasa/webgal-lovelive-terre) 已支持自动发现指定目录下的 Live2D 表情与动作，但具体目录仍需手工指定。您可参考该仓库 README.md 中的相关说明进行操作。
+
+也可使用下方[预览：Live2D 表情与动作](#live2d-表情与动作)中的打包指令打包好后直接复制进 figure 目录。
 
 ### 1. Link Like LoveLive!
 
