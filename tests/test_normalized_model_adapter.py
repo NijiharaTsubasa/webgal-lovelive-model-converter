@@ -6,7 +6,6 @@ from converter.common.normalized_model import (
     FaceBonesCopierAdapter,
     _lowest_common_node_ancestor,
     _deduplicate_skin_joints,
-    _singular_branch_redirect,
     _attach_copied_face_helpers,
     _node_world_matrices,
     _trs_to_mat,
@@ -92,16 +91,6 @@ class FaceBonesCopierAdapterTests(unittest.TestCase):
 
         self.assertEqual(_lowest_common_node_ancestor([2, 3], nodes), 1)
         self.assertEqual(_lowest_common_node_ancestor([2, 4], nodes), 0)
-
-    def test_skin_helper_below_collapsed_dummy_redirects_to_humanoid_ancestor(self):
-        bones = [
-            {"parentIndex": -1, "scale": [1, 1, 1]},
-            {"parentIndex": 0, "scale": [1e-12, 1, 1]},
-            {"parentIndex": 1, "scale": [1, 17389, 48661]},
-        ]
-
-        self.assertEqual(_singular_branch_redirect(bones, 2, {0}), 0)
-        self.assertIsNone(_singular_branch_redirect(bones, 0, {0}))
 
     def test_redirected_skin_joints_are_deduplicated_and_vertex_slots_remapped(self):
         nodes, joints, weights = _deduplicate_skin_joints(

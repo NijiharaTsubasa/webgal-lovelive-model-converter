@@ -55,6 +55,7 @@ internal static class SkeletonNormalizer
             t => t.localEulerAngles);
 
         Dictionary<Transform, Matrix4x4> neutralWorld;
+        Dictionary<Transform, TransformSnapshot> neutralLocals;
         var jointFrames = new Dictionary<Transform, Quaternion>();
         var humanToTransform = new Dictionary<HumanBodyBones, Transform>();
 
@@ -62,6 +63,7 @@ internal static class SkeletonNormalizer
         {
             SkeletonSampler.ApplyZeroMusclePose(animator, avatar);
             neutralWorld = allTransforms.ToDictionary(t => t, t => t.localToWorldMatrix);
+            neutralLocals = allTransforms.ToDictionary(t => t, t => new TransformSnapshot(t));
             foreach (var bone in HumanoidBones.All)
             {
                 var transform = animator.GetBoneTransform(bone);
@@ -86,6 +88,7 @@ internal static class SkeletonNormalizer
             allTransforms,
             humanToTransform,
             neutralWorld,
+            neutralLocals,
             jointFrames,
             sourceUnityEulerAngles,
             avatar.name,
@@ -98,6 +101,7 @@ internal static class SkeletonNormalizer
         Transform[] allTransforms,
         Dictionary<HumanBodyBones, Transform> humanToTransform,
         IReadOnlyDictionary<Transform, Matrix4x4> neutralWorld,
+        IReadOnlyDictionary<Transform, TransformSnapshot> neutralLocals,
         IReadOnlyDictionary<Transform, Quaternion> jointFrames,
         IReadOnlyDictionary<Transform, Vector3> sourceUnityEulerAngles,
         string sourceName,
@@ -184,14 +188,33 @@ internal static class SkeletonNormalizer
             }
 
             var world = desiredWorld[transform];
-            var local = parentIndex < 0
+            // Both non-core frames remain in the sampled neutral pose. Under
+            // a near-singular parent, recovering their local relation via two
+            // float world matrices amplifies rounding into huge transforms.
+            var preserveLocal = !isCore && outputParent != null
+                && outputParent == transform.parent
+                && !transformToHuman.ContainsKey(outputParent)
+                && HasCollapsedAxis(desiredWorld[outputParent]);
+            var local = preserveLocal ? Matrix4x4.identity : parentIndex < 0
                 ? world
                 : desiredWorld[outputParent].inverse * world;
             var localScaleProbe = WorldScale(local);
             Vector3 position;
             Quaternion rotation;
             Vector3 scale;
-            if (Mathf.Abs(localScaleProbe.y) < 1e-8f || Mathf.Abs(localScaleProbe.z) < 1e-8f)
+            if (preserveLocal)
+            {
+                var sampled = neutralLocals[transform];
+                position = sampled.position;
+                rotation = sampled.rotation;
+                scale = sampled.scale;
+                if (requiredTransforms.Contains(transform)
+                    && (Mathf.Abs(scale.y) < 1e-8f || Mathf.Abs(scale.z) < 1e-8f))
+                    throw new InvalidOperationException(
+                        $"Normalized skeleton contains a singular transform required by rendering: " +
+                        $"{characterName}/{transform.name}.");
+            }
+            else if (Mathf.Abs(localScaleProbe.y) < 1e-8f || Mathf.Abs(localScaleProbe.z) < 1e-8f)
             {
                 if (requiredTransforms.Contains(transform))
                     throw new InvalidOperationException(
@@ -272,6 +295,12 @@ internal static class SkeletonNormalizer
             new Vector3(matrix.m00, matrix.m10, matrix.m20).magnitude,
             new Vector3(matrix.m01, matrix.m11, matrix.m21).magnitude,
             new Vector3(matrix.m02, matrix.m12, matrix.m22).magnitude);
+    }
+
+    private static bool HasCollapsedAxis(Matrix4x4 matrix)
+    {
+        var scale = WorldScale(matrix);
+        return scale.x < 1e-8f || scale.y < 1e-8f || scale.z < 1e-8f;
     }
 
     private static void Decompose(Matrix4x4 matrix, out Vector3 position, out Quaternion rotation, out Vector3 scale)

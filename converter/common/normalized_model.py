@@ -144,33 +144,6 @@ def _lowest_common_node_ancestor(
     raise RuntimeError("skin joints do not share a common hierarchy root")
 
 
-def _singular_branch_redirect(
-    bones: list[dict[str, Any]],
-    node_index: int,
-    standard_indices: set[int],
-) -> int | None:
-    """Redirect a helper below a collapsed transform to its Humanoid ancestor.
-
-    Some Unity rigs keep an active twist joint below an almost-zero-scale
-    dummy and compensate with enormous child transforms. That hierarchy is
-    visually meaningful in Unity's original bind pose but cannot be stored
-    robustly in float32 glTF matrices. Standard motions do not animate these
-    helpers, so baking their neutral offset and binding them to the closest
-    Humanoid ancestor preserves the rendered pose without unstable matrices.
-    """
-    cursor = node_index
-    crossed_singular = False
-    seen: set[int] = set()
-    while cursor >= 0 and cursor not in seen:
-        seen.add(cursor)
-        scale = [abs(float(value)) for value in bones[cursor]["scale"]]
-        crossed_singular = crossed_singular or min(scale) < 1e-8
-        if cursor in standard_indices:
-            return cursor if crossed_singular and cursor != node_index else None
-        cursor = int(bones[cursor]["parentIndex"])
-    return None
-
-
 @dataclass
 class NormalizedNodeMapping:
     """Convert source-local Unity geometry into the exported node's frame.
@@ -464,12 +437,6 @@ def export_normalized_model(
         builder.material_adapter = source_adapter.adapt_material
     bone_redirects = source_adapter.bone_redirects(standard_bones)
     copied_face_bones = source_adapter.copied_bone_keys(bone_redirects)
-    standard_indices = set(standard_bones.values())
-    for transform, node_index in transforms:
-        target_node = _singular_branch_redirect(bones, node_index, standard_indices)
-        if target_node is not None:
-            bone_redirects.setdefault(object_id(transform), target_node)
-
     if copied_face_bones:
         source_parents = [
             path_to_node.get(tuple(bone["hierarchyPath"])[:-1], -1)
