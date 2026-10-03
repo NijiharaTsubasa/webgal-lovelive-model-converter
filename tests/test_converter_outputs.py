@@ -23,7 +23,8 @@ class ConverterOutputTests(unittest.TestCase):
             root = Path(directory)
             output = root / 'output_packages'
             for folder, component in [
-                ('llas/example', {'type': 'model', 'name': 'example', 'role': 'integrated', 'model': 'model.glb'}),
+                ('llas/example', {'type': 'model', 'name': 'example', 'role': 'integrated', 'model': 'model.glb',
+                                  'preview': 'data:image/webp;base64,UklGRg=='}),
                 ('runtime/llas_runtime', {'type': 'shader', 'name': 'llas-member'}),
             ]:
                 target = output / folder
@@ -32,6 +33,9 @@ class ConverterOutputTests(unittest.TestCase):
             _merge_top_level_index(root)
             catalog = json.loads((output / 'config.json').read_text(encoding='utf-8'))
             self.assertEqual([entry['name'] for entry in catalog['components']], ['example'])
+            self.assertNotIn('preview', catalog['components'][0])
+            source = json.loads((output / 'llas/example/config.json').read_text(encoding='utf-8'))
+            self.assertIn('preview', source['components'][0])
             index = json.loads((output / 'index.json').read_text(encoding='utf-8'))
             self.assertEqual(index['configs'], ['llas/example/config.json'])
             self.assertTrue((output / 'runtime/llas_runtime/config.json').exists())

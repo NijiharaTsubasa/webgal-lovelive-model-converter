@@ -12,6 +12,7 @@
     "convert": "python convert.py",
     "convert:clean": "python convert.py --clean",
     "merge:index": "python convert.py --merge-only",
+    "preview:models": "node tools/generate-model-previews.mjs",
     "export:garupa-live2d": "node tools/export-garupa-live2d.mjs && npm run merge:index",
     "convert:hasunosora": "python convert.py --game hasunosora",
     "convert:hasunosora:clean": "python convert.py --game hasunosora --clean",

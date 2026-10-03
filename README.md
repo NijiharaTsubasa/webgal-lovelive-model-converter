@@ -132,7 +132,64 @@ npm run convert:full:bangdream
 
 动作需将整个 `output_packages/bangdream/motions` 目录复制到 WebGAL LoveLive专版的 `figure` 目录下，不可单独复制其中的子目录。模型暂不支持加载。
 
-### 4. 一次转换全部游戏
+### 4. （可选）为模型生成预览图
+
+WebGAL LoveLive Terre 的模型选择界面支持显示 3D 模型的预览图，方便查找角色与服装。完成模型转换后，可按以下步骤生成透明背景的上半身缩略图。
+
+注：重新转换模型后，由于`config.json`会被覆盖，需要重新生成预览图。
+
+#### 4.1 准备运行时资源
+
+下载 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime)，将其放在本仓库的同级目录，并将目录名设为 `webgal-lovelive-game-runtime`。请保留其中的 `packages` 目录及内容：
+
+```text
+同一目录/
+├─ webgal-lovelive-model-converter/
+│  └─ output_packages/
+└─ webgal-lovelive-game-runtime/
+   └─ packages/
+```
+
+若运行时仓库放在其他位置，可在当前 PowerShell 窗口中指定它的 `packages` 目录，将示例路径替换成实际路径：
+
+```powershell
+$env:GAME_RUNTIME_DIR = 'D:\webgal-lovelive-game-runtime\packages'
+```
+
+#### 4.2 生成预览图
+
+首次使用时安装渲染所需的 Chromium 浏览器，然后生成预览图：
+
+```powershell
+npm run test:install-browser
+npm run preview:models
+```
+
+脚本会依次渲染 `output_packages` 中的一体化模型，在终端打印进度，并将 WebP 图片写入各模型 `config.json` 的 `preview` 字段。模型较多时需要等待一段时间。
+
+若电脑已安装 Microsoft Edge，也可以直接使用它，省去上面的浏览器安装步骤：
+
+```powershell
+npm run preview:models -- --browser msedge
+```
+
+只为尚未生成预览图的模型补图时，使用：
+
+```powershell
+npm run preview:models -- --missing
+```
+
+#### 4.3 在 Terre 中使用
+
+将生成后的模型目录复制到游戏工程的 `game/figure` 下，Terre 即可在网格视图中显示缩略图，鼠标悬停时显示预览图、模型名称和完整说明。
+
+若模型已经复制到游戏工程，也可以按模型名称同步预览图。将下面的路径替换成您游戏工程的 `figure` 目录；此命令补齐输出中缺少的预览图，并仅更新游戏模型配置的 `preview` 字段：
+
+```powershell
+npm run preview:models -- --missing --sync "D:\我的游戏\game\figure"
+```
+
+### 5. 一次转换全部游戏
 
 准备好需要转换的游戏输入后执行：
 
@@ -142,7 +199,7 @@ npm run convert:full
 
 此命令依次发现并烘焙各游戏的输入，再清空并重建有输入的游戏输出。没有识别到模型或动作时，脚本打印“输入为空”并正常跳过。某款游戏没有输入时，其已有输出保持不变。有效输入缺少依赖或烘焙失败会报错并停止。
 
-### 5. 转换命令清单
+### 6. 转换命令清单
 
 首次转换或修改了烘焙实现时使用“完整转换”；已有烘焙结果、只需重新生成产物时使用“复用烘焙结果转换”。
 
@@ -236,6 +293,7 @@ npm run export:garupa-live2d
 | --- | --- | --- |
 | `tools/install-test-browser.mjs` | 安装测试所需 Chromium，默认存放在项目的 `node_modules` 中。 | `npm run test:install-browser` |
 | `tools/export-garupa-live2d.mjs` | 将 `.mtn_exp` 中声明的参数动作和表情打成可供 WebGAL 使用的资源包。 | `npm run export:garupa-live2d` |
+| `tools/generate-model-previews.mjs` | 渲染一体化模型的透明上半身 WebP 缩略图，写入模型配置的 `preview`。需要安装上面的 Chromium 并准备模型对应的 runtime。 | `npm run preview:models`；可加 `-- --output <输出目录>`，`--missing` 只补齐缺图模型，或 `--sync <游戏模型目录>` 将缩略图同步到同名模型；`--browser msedge` / `chrome` 可使用本机已安装的浏览器 |
 | `tools/run-browser-tests.mjs` | 运行 JS 和浏览器测试，一次运行一个测试文件。与上面的安装脚本使用相同的浏览器路径。 | `npm run test:js` 或 `npm run test:integration` |
 | `tools/validate-resource-packages.mjs` | 扫描输出目录，检查配置引用的文件、模型表情、物理数据，以及材质引用的 Shader 和模型引用的 Behavior。支持独立 runtime 目录、参数动作与表情包。 | `node tools/validate-resource-packages.mjs --output <输出目录> --runtime <runtime的packages目录>` |
 | `tools/validate-all-motions.mjs` | 扫描通用动作包，检查 JSON 或二进制正文，并在两套不同的模拟骨架上验证采样和停止后的骨骼状态恢复。 | `node tools/validate-all-motions.mjs --root <输出目录>`；默认读取 `output_packages` |
@@ -247,6 +305,7 @@ npm run export:garupa-live2d
 
 | 文件 | 做什么 | 谁调用它 |
 | --- | --- | --- |
+| `tools/model-preview-renderer.js` | 使用渲染器加载模型、按上半身构图并生成透明 WebP。 | `tools/generate-model-previews.mjs` |
 | `tools/glb-reference-validation.mjs` | 检查表情引用的 GLB 节点和 Morph Target 是否存在、名称是否重复，以及权重是否为有限数值。不能直接运行。 | `tools/validate-resource-packages.mjs` 和 `tests/glb-reference-validation.test.js` |
 | `tools/preview-parameter-input.mjs` | 读取 `.mtn_exp/model.json`，为预览页提供参数资源列表和源文件。 | `vite.config.js` 和 `tests/preview-parameter-input.test.js` |
 
