@@ -27,6 +27,7 @@ const motionSelect = document.querySelector("#motion");
 const stopMotionButton = document.querySelector("#stop-motion");
 const shaderToggle = document.querySelector("#parameterized-rendering-toggle");
 const physicsToggle = document.querySelector("#physics-toggle");
+const meshClothToggle = document.querySelector("#mesh-cloth-toggle");
 const status = document.querySelector("#status");
 const motionNote = document.querySelector("#motion-note");
 const faceSource = document.querySelector('#face-source');
@@ -64,12 +65,13 @@ floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-const character = new CharacterRenderer({ renderer, scene, camera });
+const character = new CharacterRenderer({ renderer, scene, camera, meshClothEnabled: meshClothToggle.checked });
 const timer = new THREE.Timer();
 timer.connect(document);
 let allComponents = [];
 const fullModelManifests = new Map();
 let modelSelectionRequest = 0;
+let selectedModelEntries = [];
 
 async function resolveModelEntry(entry) {
   let promise = fullModelManifests.get(entry.configPath);
@@ -155,7 +157,7 @@ function syncExpressionControls() {
   }
 }
 
-function showLoadedModel(entries, result) {
+function showLoadedModel(entries, result, preserveView = false) {
   if (!result) return;
   expressionSelect.replaceChildren(new Option("默认表情", ""));
   fillSelect(expressionSelect, result.faceDefinition.expressions, (item) => [item.name, item.name]);
@@ -164,7 +166,7 @@ function showLoadedModel(entries, result) {
   document.querySelector("#mesh-count").textContent = result.meshes;
   document.querySelector("#expression-count").textContent = result.faceDefinition.expressions.length;
   document.querySelector("#bone-count").textContent = result.bones;
-  resetCamera();
+  if (!preserveView) resetCamera();
   const behaviorNote = result.behaviorDiagnostics ? ` · Behavior 降级 ${result.behaviorDiagnostics}` : "";
   if (entries.length === 1) {
     status.textContent = `${entries[0].name}${behaviorNote}`;
@@ -176,15 +178,17 @@ function showLoadedModel(entries, result) {
   }
 }
 
-async function loadEntries(entries) {
+async function loadEntries(entries, { preserveView = false } = {}) {
+  selectedModelEntries = entries;
   const request = ++modelSelectionRequest;
   status.textContent = `正在加载 ${entries.map((entry) => entry.name).join(" + ")}`;
   stopMotionButton.disabled = true;
   const resolved = await Promise.all(entries.map(resolveModelEntry));
   if (request !== modelSelectionRequest) return;
+  character.meshClothEnabled = meshClothToggle.checked;
   const result = await character.load(resolved, packagesRoot);
   if (!result) return;
-  showLoadedModel(entries, result);
+  showLoadedModel(entries, result, preserveView);
   await applyFaceSource();
   if (character.root !== result.root) return;
   await describeMotion(motionSelect.value);
@@ -407,6 +411,10 @@ stopMotionButton.addEventListener("click", () => {
 });
 shaderToggle.addEventListener("change", () => character.setShadersEnabled(shaderToggle.checked));
 physicsToggle.addEventListener("change", () => character.setPhysicsEnabled(physicsToggle.checked));
+meshClothToggle.addEventListener("change", () => {
+  character.meshClothEnabled = meshClothToggle.checked;
+  if (selectedModelEntries.length) loadEntries(selectedModelEntries, { preserveView: true }).catch(showError);
+});
 document.querySelector("#reset").addEventListener("click", resetCamera);
 new ResizeObserver(() => {
   const width = viewport.clientWidth;
