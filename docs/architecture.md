@@ -77,11 +77,11 @@ Humanoid 肌肉动画必须由 Unity 解算。Python 读取的是已解算结果
 
 `converter/common/normalized_model.py` 把原始网格与 Unity 骨架记录结合，生成归一化模型。它处理骨架层级、几何和蒙皮；游戏适配器可在这里挂接面部或重定向来源骨骼。`glb.py` 写入 GLB，`physics.py` 提取可供运行时物理使用的骨骼、碰撞体与布料数据。
 
-动作采样、手型和控制状态图整理为通用动作正文。`common/motion.py` 处理 Clip 引用和 AnimatorController 控制图，`common/motion_binary.py` 将数组编码为 `.motionbin`。名称、说明和资源路径写入包的 `config.json`。
+动作采样、手型和控制状态图整理为通用动作数据。`common/motion.py` 处理 Clip 引用和 AnimatorController 控制图，`common/motion_binary.py` 将数组编码为 `.motionbin`。名称、说明和兼容分组保存在文件的 JSON 头中，播放采样保存在二进制数据区。
 
 这里不只是把每个 Clip 存成一个可重复播放的片段。一个游戏动作可能包含进入段、保持或循环段、退出段，还可能用不同层控制左右手型。Unity 烘焙提供各片段“每一帧是什么姿势”；Python 读取来源控制器，补上“先播哪个片段、何时转到下一个、收到停止请求后怎么退出”。最终动作正文同时包含姿势数据与播放程序，播放器才能区别循环动作和播完停止的动作。LLAS 的独立身体 Clip 则按其来源循环设置生成相应程序。
 
-各游戏输出在 `output_packages/<game>/`，动作集中于 `motions/`。角色目录包含 `config.json` 与 GLB；模型配置还包含表情、默认动作、静止姿态及必要的物理和 Behavior 参数。
+各游戏模型输出在 `output_packages/<game>/`，动作集中于 `output_packages/motion/<game>/`。角色目录包含 `config.json` 与 GLB；模型配置还包含表情、默认动作、静止姿态及必要的物理和 Behavior 参数。每个 `.motionbin` 同时保存名称、说明、动作分组与播放数据，目录路径作为动作的加载标识。
 
 ### 2.3 命令的组合关系
 
@@ -111,7 +111,7 @@ Humanoid 肌肉动画必须由 Unity 解算。Python 读取的是已解算结果
 | --- | --- | --- | --- |
 | 1. 发现与分批 | 从 `input_hasunosora` 识别 `3d_costume_*`、`mot_*`、`motion_*`，沿 AB 声明收集依赖 | 内存中的包名映射、依赖闭包和批次；每批临时 AB 路径列表 | Unity 按列表直接读取原输入文件，加载每批需要的资源 |
 | 2. Unity 解算 | 适配器准备身体与面部的挂接，使用 Avatar 归一化模型并采样动作 | `baked_motions/normalized/<服装包名>.skeleton.json` 与 `<动作包名>.baked.json` | Python 分别把它们作为模型几何转换和动作打包的依据 |
-| 3. 动作打包 | `hasunosora/motion.py` 读取动作采样及原 AB 的控制器；保留片段引用、循环和状态关系 | `output_packages/hasunosora/motions/*.motionbin` 与 `motions/config.json` | 播放器按配置找到二进制正文并执行控制状态图；模型也能引用其中的默认动作 |
+| 3. 动作打包 | `hasunosora/motion.py` 读取动作采样及原 AB 的控制器；保留片段引用、循环和状态关系 | `output_packages/motion/hasunosora/*.motionbin`，包含动作元数据与播放数据 | 播放器读取动作文件并执行控制状态图；模型按资源路径引用默认动作 |
 | 4. 模型导出 | 再读模型 AB 与依赖，结合步骤 2 的骨架转换网格、蒙皮、材质、物理和表情 | `<服装包名>/model.glb`；待写入的模型元数据 | GLB 保存绘制数据；表情、物理和资源引用等元数据进入配置 |
 | 5. 配置与说明 | 合并表情分组、默认姿态、可选说明，写入模型配置并更新清单 | `<服装包名>/config.json` 与预览清单 | 渲染器从模型配置加载 GLB，查找 Shader、Behavior 和默认动作 |
 
@@ -133,7 +133,7 @@ Humanoid 肌肉动画必须由 Unity 解算。Python 读取的是已解算结果
 | 2. 归一化头与身体 | 身体使用原生 Avatar；缺少 Avatar 的来源骨架用模板的映射构建并经 Unity 验证 | `baked_motions/normalized/<来源根名称>.skeleton.json` | Python 按头、身体身份选择各自的归一化结果，不能因包名相同就混用 |
 | 3. 导出模型与体型数据 | 原始 AB + 步骤 2 的骨架；处理面部骨骼、材质、Morph、物理，并解析 AvatarDescription/AvatarScaler | 包目录中的 `head.glb`、`body.glb` 和 `config.json`；其中包含 Behavior 的 `profile` 或 `binding` | 渲染器组合头身；runtime 的 AvatarScaler Behavior 读取双方配置，应用角色体型 |
 | 4. 烘焙独立动作 | 根据原始动作路径选择支持的动作，选一对有有效 Avatar 的匹配头身作参照，将动作暂存为 `motion_000001` 等名字 | `baked_motions/bangdream/motion_*.baked.json` | Python 按同一份排序后的来源列表把临时编号对应回资源名 |
-| 5. 打包动作 | 结合采样和原动作 AB，整理状态图、手型，筛掉占位片段，拆分多角色片段 | `output_packages/bangdream/motions/*.motionbin` 与 `motions/config.json` | 模型共用这些骨骼动作；模型专属 Morph 轨道按 `motionGroup` 匹配 |
+| 5. 打包动作 | 结合采样和原动作 AB，整理状态图、手型，筛掉占位片段，拆分多角色片段 | `output_packages/motion/garupa/<原资源路径>.motionbin` | 模型共用这些骨骼动作；模型专属 Morph 轨道按文件中的 `motionGroup` 匹配 |
 
 步骤 3 有几项需要理解的适配：
 
@@ -160,7 +160,7 @@ LLAS 有三层额外工作：输入文件名可能是不透明的存储键，不
 | 4. 烘焙身体动作 | 用一个已建立 Humanoid 的 member 作参照，播放 Generic 来源的骨骼动作并通过 Unity 采样 | `baked_motions/llas/motion__<内部动作名>.baked.json` | Python 结合来源 Clip 的循环标记打包共享骨骼动作 |
 | 5. 组装并导出模型 | 同时读取 member、面部依赖、步骤 2 的骨架和步骤 3 的表情采样；挂接五官、应用头部材质并保留必要的刚性附件 | `<member名>/model.glb`，包含完整脸部或璃奈板，以及可用 Morph | 模型配置中的 Morph 表情和 Behavior 引用这些节点与目标 |
 | 6. 生成表情与行为配置 | 普通脸生成 Morph 姿态和分组，并整理辅助节点控制；板脸生成控制通道和图案映射 | `<member名>/config.json` 中的表情、物理、Behavior 参数、默认动作与静止姿态 | 渲染器控制标准 Morph，runtime 执行普通脸辅助变化或璃奈板切换 |
-| 7. 动作与说明打包 | 身体采样写入 `.motionbin`；可选 DB 关联原资源与角色、服装名称 | `output_packages/llas/motions/` 与最终模型说明、预览清单 | WebGAL 按资源名加载模型与共享动作 |
+| 7. 动作与说明打包 | 身体采样与动作元数据写入 `.motionbin`；可选 DB 关联原资源与角色、服装名称 | `output_packages/motion/llas/<角色标识>/<动作名>.motionbin` 与最终模型说明、预览清单 | WebGAL 按资源路径加载模型与共享动作 |
 
 为什么这些步骤不能省略：
 

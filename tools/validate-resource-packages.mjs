@@ -5,7 +5,6 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { validateResourceManifest } from "webgal-lovelive-gltf-renderer/resource-manifest.js";
 import { validateModelManifest } from "webgal-lovelive-gltf-renderer/model-manifest.js";
-import { validateMotionManifest } from "webgal-lovelive-gltf-renderer/motion-manifest.js";
 import { expandParameterManifest } from "webgal-lovelive-gltf-renderer/garupa/manifest.js";
 import { validateBehaviorPackage } from "webgal-lovelive-gltf-renderer/model-behaviors.js";
 import { validatePhysics } from "webgal-lovelive-gltf-renderer/model-physics.js";
@@ -13,7 +12,7 @@ import { HUMANOID_BONE_NAMES } from "webgal-lovelive-gltf-renderer/skeleton-comp
 import { validateShaderPasses, resolveMaterialPasses } from "webgal-lovelive-gltf-renderer/shader-passes.js";
 import { validateSamplerDescriptors } from "webgal-lovelive-gltf-renderer/sampler-bindings.js";
 import { buildMorphNodeIndex, validateTargetMap } from "./glb-reference-validation.mjs";
-import { readMotionFile, validateData } from "./validate-all-motions.mjs";
+import { motionFiles, readMotionFile, validateData, validateMotionResource } from "./validate-all-motions.mjs";
 
 const require = (condition, message) => { if (!condition) throw new Error(message); };
 const json = async (file) => JSON.parse(await fs.readFile(file, "utf8"));
@@ -205,13 +204,13 @@ export async function auditResourcePackages(output, options = {}) {
   const packages = [], shaders = new Map(), behaviors = new Set();
   for (const file of files) await check(file, async () => {
     const config = validateResourceManifest(await json(file), file);
-    validateModelManifest(config, file); validateMotionManifest(config, file); validateBehaviorPackage(config, file);
+    validateModelManifest(config, file); validateBehaviorPackage(config, file);
     expandParameterManifest(config, portable(file));
     packages.push({ file, directory: path.dirname(file), config }); counts.configs++;
   });
   for (const { file, directory, config } of packages) for (const component of config.components) {
     await check(`${file} ${component.type}:${component.name}`, async () => {
-      if (!Object.hasOwn(counts, component.type) || ["configs", "cloths", "springs"].includes(component.type)) return;
+      if (!Object.hasOwn(counts, component.type) || ["configs", "motion", "cloths", "springs"].includes(component.type)) return;
       counts[component.type]++;
       if (component.type === "shader") {
         require(typeof component.name === "string" && component.name.trim(), "Shader name 不能为空");
@@ -236,7 +235,6 @@ export async function auditResourcePackages(output, options = {}) {
   }
   for (const { file, directory, config } of packages) for (const component of config.components) {
     await check(`${file} ${component.type}:${component.name}`, async () => {
-      if (component.type === "motion") validateData(await readMotionFile(await existingFile(directory, component.src)), component.name);
       if (component.type !== "model") return;
       const { document, buffers } = await readGlb(await existingFile(directory, component.model));
       const morphs = buildMorphNodeIndex(document, component.name);
@@ -251,6 +249,14 @@ export async function auditResourcePackages(output, options = {}) {
       }
     });
   }
+  await check(root, async () => {
+    for (const file of await motionFiles(root)) await check(file, async () => {
+      const payload = await readMotionFile(file);
+      validateMotionResource(payload, file);
+      validateData(payload, file);
+      counts.motion++;
+    });
+  });
   return { passed: errors.length === 0, counts, errors, warnings };
 }
 

@@ -23,11 +23,11 @@ async function fixture(t) {
   return { directory, root, model };
 }
 
-test('parameter input preserves source names and fades without requiring the Live2D model', async t => {
+test('parameter input preserves source names and uses default motion fades', async t => {
   const { root } = await fixture(t);
   const manifest = await readParameterInput(root);
   assert.deepEqual(manifest.components, [
-    { type: 'garupa-motion', name: 'anon/angry01', src: 'motions/PARAM_IMPORT__37/anon/angry01.mtn', fade_in: 150, fade_out: 250 },
+    { type: 'garupa-motion', name: 'anon/angry01', src: 'motions/PARAM_IMPORT__37/anon/angry01.mtn', fade_in: 500, fade_out: 500 },
     { type: 'garupa-expression', name: 'anon/angry01', src: 'expressions/__base__/anon/angry01.exp.json' },
   ]);
   assert.deepEqual(await readParameterInput(path.join(root, 'absent')), { components: [] });
@@ -67,7 +67,7 @@ test('preview serves source files on demand and discovers changes on refresh wit
   await assert.rejects(fs.stat(path.join(root, 'config.json')), { code: 'ENOENT' });
 });
 
-test('main preview lists imported parameters once and uses the input files instead of duplicate output entries', { timeout: 30_000 }, async t => {
+test('main preview lists only input parameter resources', { timeout: 30_000 }, async t => {
   const { root } = await fixture(t);
   const server = await createServer({ ...previewConfig, configFile: false, logLevel: 'silent',
     plugins: [previewParameterInput(root), ...previewConfig.plugins.filter(plugin => plugin.name !== 'preview-parameter-input')],
@@ -77,8 +77,8 @@ test('main preview lists imported parameters once and uses the input files inste
   const page = await browser.newPage();
   const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
   await page.route(`${origin}/packages/config.json`, route => route.fulfill({ json: { components: [
-    { type: 'garupa-motion', name: 'anon/angry01', src: 'old.mtn', sourceConfig: 'old/config.json' },
-    { type: 'garupa-expression', name: 'anon/angry01', src: 'old.exp.json', sourceConfig: 'old/config.json' },
+    { type: 'garupa-motion', name: 'output-only', src: 'old.mtn', sourceConfig: 'old/config.json' },
+    { type: 'garupa-expression', name: 'output-only', src: 'old.exp.json', sourceConfig: 'old/config.json' },
   ] } }));
   await page.route('**/packages/runtime/**', route => route.fulfill({ json: { components: [
     { type: 'behavior', namespace: 'Fixture', name: route.request().url().split('/').at(-2), script: 'unused.js' },
@@ -90,4 +90,6 @@ test('main preview lists imported parameters once and uses the input files inste
   await page.selectOption('#motion-source', 'garupa');
   const motions = await page.locator('#motion option').evaluateAll(options => options.filter(o => o.text.includes('anon/angry01')).map(o => o.value));
   assert.equal(motions.length, 1); assert.ok(motions[0].startsWith('parameter-input/config.json#'));
+  assert.equal(await page.locator('#motion option').evaluateAll(options => options.some(o => o.text.includes('output-only'))), false);
+  assert.equal(await page.locator('#parameter-expression option').evaluateAll(options => options.some(o => o.text.includes('output-only'))), false);
 });

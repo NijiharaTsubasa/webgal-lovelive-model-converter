@@ -148,7 +148,7 @@ test("preview defaults to model action and can show its separate idle pose", { t
         ].map((component) => ({ ...component, sourceConfig: "fixture/models/config.json" })),
         ...['head', 'body'].map(role => ({ ...integratedManifest(role).components[0],
           role, group: 'Fixture', sourceConfig: 'fixture/parts/config.json' })),
-        { type: "motion", name: "IdleName", src: "idle.json", sourceConfig: "fixture/motions/config.json" },
+        { type: "motion", name: "IdleName", sourceMotion: "motion/IdleName.json" },
       ] } });
     }
     if (pathname === "/packages/fixture/models/config.json") {
@@ -160,12 +160,7 @@ test("preview defaults to model action and can show its separate idle pose", { t
     if (pathname === "/packages/fixture/models/model.glb") {
       return route.fulfill({ contentType: "model/gltf-binary", body: humanoidGlb() });
     }
-    if (pathname === "/packages/fixture/motions/config.json") {
-      return route.fulfill({ json: { components: [
-        { type: "motion", name: "IdleName", src: "idle.json" },
-      ] } });
-    }
-    if (pathname === "/packages/fixture/motions/idle.json") {
+    if (pathname === "/packages/motion/IdleName.json") {
       const motion = emptyTrackMotion(false);
       motion.clips[0].tracks = [{
         bone: "Hips", rotation: [0, 0, 0, 1, 0, 0, 0, 1],
@@ -230,17 +225,9 @@ test("preview keeps the latest model selection when GLB loads finish out of orde
       return route.fulfill({ json: { components: [
         { ...integratedManifest("First").components[0], sourceConfig: "fixture/first/config.json" },
         { ...integratedManifest("Second").components[0], sourceConfig: "fixture/second/config.json" },
-        { type: "motion", name: "DelayedMotion", src: "delayed.baked.json",
-          motionGroup: "fixture", sourceConfig: "bangdream/motions/config.json" },
+        { type: "motion", name: "DelayedMotion",
+          motionGroup: "fixture", sourceMotion: "motion/garupa/DelayedMotion.json" },
       ] } });
-    }
-    if (pathname === "/packages/bangdream/motions/config.json") {
-      return route.fulfill({ json: { components: [{
-        type: "motion",
-        name: "DelayedMotion",
-        src: "delayed.baked.json",
-        motionGroup: "fixture",
-      }] } });
     }
     if (pathname === "/packages/fixture/first/config.json") {
       return route.fulfill({ json: integratedManifest("First") });
@@ -256,7 +243,7 @@ test("preview keeps the latest model selection when GLB loads finish out of orde
     if (pathname === "/packages/fixture/second/model.glb") {
       return route.fulfill({ contentType: "model/gltf-binary", body: minimalGlb("SecondRoot") });
     }
-    if (pathname === "/packages/bangdream/motions/delayed.baked.json") {
+    if (pathname === "/packages/motion/garupa/DelayedMotion.json") {
       motionRequested();
       await new Promise((resolve) => setTimeout(resolve, 500));
       return route.fulfill({ json: {
@@ -277,7 +264,7 @@ test("preview keeps the latest model selection when GLB loads finish out of orde
   assert.equal(await page.locator("#status").textContent(), "Second");
   assert.deepEqual(failures, []);
 
-  await page.selectOption("#motion", "bangdream/motions/config.json#motion:fixture:DelayedMotion");
+  await page.selectOption("#motion", "motion/garupa/DelayedMotion.json");
   await motionRequest;
   await page.selectOption("#package-mode", "composed");
   await page.waitForFunction(() => document.querySelector("#status")?.textContent === "当前输出目录没有 head 组件");
@@ -317,10 +304,10 @@ test("first load of another motion keeps the current pose until its payload is r
     if (pathname === "/packages/config.json") {
       return route.fulfill({ json: { components: [
         { ...integratedManifest("Model").components[0], sourceConfig: "fixture/model/config.json" },
-        { type: "motion", name: "First", src: "first.json", motionGroup: "fixture",
-          sourceConfig: "fixture/motions/config.json" },
-        { type: "motion", name: "Second", src: "second.json", motionGroup: "fixture",
-          sourceConfig: "fixture/motions/config.json" },
+        { type: "motion", name: "First", motionGroup: "fixture",
+          sourceMotion: "motion/First.json" },
+        { type: "motion", name: "Second", motionGroup: "fixture",
+          sourceMotion: "motion/Second.json" },
       ] } });
     }
     if (pathname === "/packages/fixture/model/config.json") {
@@ -329,16 +316,10 @@ test("first load of another motion keeps the current pose until its payload is r
     if (pathname === "/packages/fixture/model/model.glb") {
       return route.fulfill({ contentType: "model/gltf-binary", body: minimalGlb("ModelRoot") });
     }
-    if (pathname === "/packages/fixture/motions/config.json") {
-      return route.fulfill({ json: { components: [
-        { type: "motion", name: "First", src: "first.json", motionGroup: "fixture" },
-        { type: "motion", name: "Second", src: "second.json", motionGroup: "fixture" },
-      ] } });
-    }
-    if (pathname === "/packages/fixture/motions/first.json") {
+    if (pathname === "/packages/motion/First.json") {
       return route.fulfill({ json: emptyTrackMotion(true) });
     }
-    if (pathname === "/packages/fixture/motions/second.json") {
+    if (pathname === "/packages/motion/Second.json") {
       secondRequested();
       await secondReady;
       return route.fulfill({ json: emptyTrackMotion(false) });
@@ -348,10 +329,10 @@ test("first load of another motion keeps the current pose until its payload is r
 
   await page.goto(baseUrl);
   await page.waitForFunction(() => document.querySelector("#status")?.textContent === "Model", null, { timeout: 15_000 });
-  await page.selectOption("#motion", "fixture/motions/config.json#motion:fixture:First");
+  await page.selectOption("#motion", "motion/First.json");
   await page.waitForFunction(() => !document.querySelector("#stop-motion").disabled);
 
-  await page.selectOption("#motion", "fixture/motions/config.json#motion:fixture:Second");
+  await page.selectOption("#motion", "motion/Second.json");
   await secondRequest;
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   assert.equal(await page.locator("#stop-motion").isEnabled(), true,

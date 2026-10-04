@@ -32,6 +32,9 @@ def main() -> None:
         raise SystemExit("LLAS motions require a character model as the Humanoid reference rig")
     if args.clean and args.output.exists():
         shutil.rmtree(args.output)
+    motion_output = args.output.resolve().parent / "motion" / "llas"
+    if args.clean and motion_output.exists():
+        shutil.rmtree(motion_output)
     convert_all(
         args.input.resolve(), args.output.resolve(), args.baked.resolve(),
         model_names=args.model,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 from pathlib import Path
 
@@ -42,15 +41,11 @@ def main() -> None:
 
     if args.clean:
         clean_game_output(output_root)
+        clean_game_output(output_root.parent / "motion" / "garupa")
 
     convert_all(input_root, output_root, baked_root)
     if motions:
-        package_existing_motions(input_root, baked_root / "bangdream", output_root / "motions")
-    index_path = output_root / "index.json"
-    index = json.loads(index_path.read_text(encoding="utf-8"))
-    if (output_root / "motions" / "config.json").is_file():
-        index["configs"].append("motions/config.json")
-    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        package_existing_motions(input_root, baked_root / "bangdream", output_root.parent / "motion" / "garupa")
 
 
 if __name__ == "__main__":

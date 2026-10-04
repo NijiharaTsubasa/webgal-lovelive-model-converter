@@ -8,15 +8,16 @@ Layout after running:
     output_packages/
         hasunosora/
             3d_costume_1001103101/...
-            motions/...
             index.json
         bangdream/
             018_cos_base/...
-            motions/...
             index.json
         llas/
             ch0001_co0002_member/...
-            motions/...
+        motion/
+            hasunosora/*.motionbin
+            garupa/<source-path>.motionbin
+            llas/<character>/<motion>.motionbin
         config.json        (lightweight preview catalog, written here)
         index.json         (validation-tool index, written here)
 """
@@ -28,6 +29,7 @@ import json
 import subprocess
 import sys
 import os
+import struct
 from pathlib import Path
 
 
@@ -61,7 +63,9 @@ def _merge_top_level_index(root: Path) -> int:
                      for path in output_root.rglob("config.json")
                      if path.is_file() and path != output_root / "config.json"
                      and path.relative_to(output_root).parts[0] != "runtime")
-    top_level = {"configs": configs}
+    motion_files = sorted(path.relative_to(output_root).as_posix()
+                          for path in (output_root / "motion").rglob("*.motionbin"))
+    top_level = {"configs": configs, "motions": motion_files}
 
     catalog = []
     model_fields = ("type", "name", "description", "group", "role", "model",
@@ -69,12 +73,24 @@ def _merge_top_level_index(root: Path) -> int:
     for relative in configs:
         manifest = json.loads((output_root / relative).read_text(encoding="utf-8"))
         for component in manifest["components"]:
+            if component["type"] in ("garupa-motion", "garupa-expression"):
+                continue
             if component["type"] == "model":
                 entry = {key: component[key] for key in model_fields if key in component}
             else:
                 entry = dict(component)
             entry["sourceConfig"] = relative
             catalog.append(entry)
+
+    for relative in motion_files:
+        with (output_root / relative).open("rb") as stream:
+            prefix = stream.read(12)
+            if len(prefix) != 12 or prefix[:8] != b"MOTION\x00\x00":
+                raise ValueError(f"Invalid motion file: {relative}")
+            header = json.loads(stream.read(struct.unpack_from("<I", prefix, 8)[0]))
+        entry = {key: header[key] for key in ("type", "name", "description", "motionGroup") if key in header}
+        entry["sourceMotion"] = relative
+        catalog.append(entry)
 
     (output_root / "config.json").write_text(
         json.dumps({"components": catalog}, ensure_ascii=False, separators=(",", ":")) + "\n",

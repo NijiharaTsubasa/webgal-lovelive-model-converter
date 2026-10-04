@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { CharacterRenderer } from "webgal-lovelive-gltf-renderer/character-renderer.js";
 import { expandModelManifest } from "webgal-lovelive-gltf-renderer/model-manifest.js";
-import { expandMotionManifest } from "webgal-lovelive-gltf-renderer/motion-manifest.js";
+import { previewNativeMotion } from './preview-native-motion.js';
 import { normalizeFrameDelta } from "webgal-lovelive-gltf-renderer/frame-time.js";
 import { expandParameterManifest, ExpressionAdapterRegistry, parameterResourceUrl } from 'webgal-lovelive-gltf-renderer/garupa/manifest.js';
 import { loadPreviewParameterRuntime } from './preview-parameter-runtime.js';
@@ -65,7 +65,8 @@ floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-const character = new CharacterRenderer({ renderer, scene, camera, meshClothEnabled: meshClothToggle.checked });
+const character = new CharacterRenderer({ renderer, scene, camera,
+  fetchResource: globalThis.fetch.bind(globalThis), meshClothEnabled: meshClothToggle.checked });
 const timer = new THREE.Timer();
 timer.connect(document);
 let allComponents = [];
@@ -310,7 +311,8 @@ async function boot() {
   const catalog = await fetchJson(`${packagesRoot}config.json`);
   if (!Array.isArray(catalog.components)) throw new Error("预览汇总 config.json 缺少 components");
   const bySource = new Map();
-  for (const { sourceConfig, ...component } of catalog.components) {
+  const nativeMotions = catalog.components.filter(component => component.type === 'motion');
+  for (const { sourceConfig, ...component } of catalog.components.filter(component => !['motion', 'garupa-motion', 'garupa-expression'].includes(component.type))) {
     if (typeof sourceConfig !== "string" || !sourceConfig.endsWith("/config.json")) {
       throw new Error("预览组件缺少 sourceConfig");
     }
@@ -324,13 +326,6 @@ async function boot() {
   const parameterInput = await inputResponse.json();
   if (!inputResponse.ok) throw new Error(parameterInput.error ?? '无法读取参数动作和表情输入');
   if (parameterInput.components.length) {
-    const inputNames = new Set(parameterInput.components.map(component => `${component.type}:${component.name}`));
-    for (const manifest of manifests) {
-      manifest.config.components = manifest.config.components.filter(component => !inputNames.has(`${component.type}:${component.name}`));
-    }
-    for (let index = manifests.length - 1; index >= 0; index--) {
-      if (!manifests[index].config.components.length) manifests.splice(index, 1);
-    }
     manifests.push({ configPath: 'parameter-input/config.json', config: parameterInput });
   }
   for (const name of ['hasunosora_runtime', 'garupa_runtime', 'llas_runtime']) {
@@ -355,7 +350,7 @@ async function boot() {
       component,
     })));
   componentByKey = new Map(allComponents.map((entry) => [entry.key, entry]));
-  standardMotions = manifests.flatMap(({ config, configPath }) => expandMotionManifest(config, configPath));
+  standardMotions = nativeMotions.map(previewNativeMotion);
   parameterEntries = manifests.flatMap(({ config, configPath }) => expandParameterManifest(config, configPath));
   adapters = new ExpressionAdapterRegistry(parameterEntries, packagesRoot);
   fillSelect(parameterExpression, parameterEntries.filter(item => item.type === 'garupa-expression'), item => [item.key, resourceOptionLabel(item)]);

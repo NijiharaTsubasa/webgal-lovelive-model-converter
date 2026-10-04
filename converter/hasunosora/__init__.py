@@ -52,7 +52,7 @@ from ..common.normalized_model import (
     NormalizedExport,
     export_normalized_model,
 )
-from .motion import collect_baked_motions, write_motion_index
+from .motion import collect_baked_motions
 from .materials import adapt_material
 from .source import discover_inputs
 from .identity import SUPPLEMENTAL_COSTUMES, load_costume_motion_groups
@@ -371,11 +371,12 @@ def convert(
     Discovers every 3d_costume_<id>.assetbundle in `input_dir`, treats each
     one as a character bundle, normalises it via Unity-side baking (when
     available), exports to glTF via the generic pipeline, and emits the
-    standardized config.json. The hasunosora/motions output is produced by
+    standardized config.json. The motion/hasunosora output is produced by
     collect_baked_motions (which compiles each baked JSON's AnimatorController
     sibling through the common motion pipeline).
 
-    Multi-game layout: characters and motions go into `<output_dir>/hasunosora/`,
+    Characters go into `<output_dir>/hasunosora/`, motions into
+    `<output_dir>/motion/hasunosora/`;
     shader and Behavior packages are published separately. The
     top-level `index.json` is owned by convert.py — this function only writes
     the per-game index."""
@@ -390,6 +391,9 @@ def convert(
     game_dir = output_dir / "hasunosora"
     if clean and game_dir.exists():
         shutil.rmtree(game_dir)
+    motion_output = output_dir / "motion" / "hasunosora"
+    if clean and not models_only and motion_output.exists():
+        shutil.rmtree(motion_output)
     game_dir.mkdir(parents=True, exist_ok=True)
     costume_labels = load_costume_labels(input_dir)
     costume_motion_groups = load_costume_motion_groups(input_dir)
@@ -397,9 +401,7 @@ def convert(
 
     motions = []
     if not models_only:
-        motion_output = game_dir / "motions"
         motions = collect_baked_motions(baked_dir, input_dir, motion_output)
-        write_motion_index(motion_output, motions)
 
     packages = []
     requested = set(model_names or [])

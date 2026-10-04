@@ -272,16 +272,15 @@ def package_motion(
             program = _simple_program(package_data)
         _strip_bake_metadata(package_data)
         motion = {**package_data, "program": program}
-        folder_name = package_name.replace("/", "_").replace("\\", "_")
-        destination_dir = output_root / folder_name
-        destination_dir.mkdir(parents=True, exist_ok=True)
-        destination = destination_dir / "motion.motionbin"
-        destination.write_bytes(encode_motion(motion))
-        entries.append({
+        metadata = {
             "type": "motion",
             "name": package_name,
             "description": "BanG Dream motion",
             "motionGroup": "garupa",
-            "src": f"{folder_name}/motion.motionbin",
-        })
+        }
+        relative_path = package_name.replace("\\", "/").removeprefix("garupa/") + ".motionbin"
+        destination = output_root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(encode_motion({**metadata, **motion}))
+        entries.append({**metadata, "src": relative_path})
     return entries, skipped

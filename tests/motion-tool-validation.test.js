@@ -6,7 +6,7 @@ import path from 'node:path';
 import { auditMotions, readMotionFile, validateData } from '../tools/validate-all-motions.mjs';
 
 function motion() {
-  return { clips: [{ id: 'clip', name: 'clip', duration: 1, sampleRate: 1, frames: 2,
+  return { type: 'motion', name: 'original_idle', description: '', clips: [{ id: 'clip', name: 'clip', duration: 1, sampleRate: 1, frames: 2,
     tracks: [{ bone: 'Hips', rotation: [0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0, 0, 0.1, 0] }] }],
   auxiliaryClips: [], leftHandPoses: [], rightHandPoses: [], program: { parameters: [], commands: {}, poseSlots: [],
     baseLayer: 'base', layers: [{ id: 'base', blend: 'override', weight: 1, initialState: 'play',
@@ -44,14 +44,11 @@ test('motion reader validates JSON and binary arrays identically, including malf
   await assert.rejects(readMotionFile(path.join(root, 'bad.motionbin')), /Invalid binary motion/);
 });
 
-test('motion audit scans a standalone package, allows shared payloads and has no fixed corpus counts', async t => {
+test('motion audit scans standalone files and has no fixed corpus counts', async t => {
   const root = await fixture(t);
   await fs.writeFile(path.join(root, 'a.motionbin'), binary(motion()));
-  await fs.writeFile(path.join(root, 'config.json'), JSON.stringify({ components: [
-    { type: 'motion', name: 'one', src: 'a.motionbin' }, { type: 'motion', name: 'two', src: 'a.motionbin' },
-  ] }));
   const report = await auditMotions(root);
-  assert.equal(report.passed, 2); assert.equal(report.failed, 0);
+  assert.equal(report.passed, 1); assert.equal(report.failed, 0);
   assert.equal(report.uniquePayloadFiles, 1); assert.deepEqual(report.coverageErrors, []);
   await assert.rejects(auditMotions(root, { expectedGroups: { '<common>': 3 } }), /expected/);
   assert.equal((await auditMotions(root, { expectedClips: 3 })).coverageErrors.length, 1);
@@ -59,11 +56,10 @@ test('motion audit scans a standalone package, allows shared payloads and has no
 
 test('motion audit uses current index without treating the root preview catalog as a package', async t => {
   const root = await fixture(t);
-  await fs.mkdir(path.join(root, 'motions'));
+  await fs.mkdir(path.join(root, 'motion'));
   await fs.writeFile(path.join(root, 'config.json'), JSON.stringify({ components: [{ type: 'motion', name: 'preview-only' }] }));
-  await fs.writeFile(path.join(root, 'index.json'), JSON.stringify({ configs: ['motions/config.json'] }));
-  await fs.writeFile(path.join(root, 'motions/config.json'), JSON.stringify({ components: [{ type: 'motion', name: 'one', src: 'a.json' }] }));
-  await fs.writeFile(path.join(root, 'motions/a.json'), JSON.stringify(motion()));
+  await fs.writeFile(path.join(root, 'index.json'), JSON.stringify({ configs: [], motions: ['motion/a.json'] }));
+  await fs.writeFile(path.join(root, 'motion/a.json'), JSON.stringify(motion()));
   const report = await auditMotions(root);
   assert.equal(report.failed, 0); assert.equal(report.motions, 1);
 });
@@ -73,9 +69,6 @@ test('motion audit allows the same motion identity in independent packages', asy
   for (const name of ['first', 'second']) {
     const directory = path.join(root, name);
     await fs.mkdir(directory);
-    await fs.writeFile(path.join(directory, 'config.json'), JSON.stringify({ components: [
-      { type: 'motion', name: 'idle', motionGroup: 'test', src: 'idle.json' },
-    ] }));
     await fs.writeFile(path.join(directory, 'idle.json'), JSON.stringify(motion()));
   }
   const report = await auditMotions(root);
@@ -84,13 +77,23 @@ test('motion audit allows the same motion identity in independent packages', asy
   assert.equal(report.uniquePayloadFiles, 2);
 });
 
-test('motion audit rejects duplicate motion identities within one package', async t => {
+test('motion audit allows repeated names across files and rejects duplicate index paths', async t => {
   const root = await fixture(t);
-  await fs.writeFile(path.join(root, 'config.json'), JSON.stringify({ components: [
-    { type: 'motion', name: 'idle', motionGroup: 'test', src: 'first.json' },
-    { type: 'motion', name: 'idle', motionGroup: 'test', src: 'second.json' },
-  ] }));
-  await assert.rejects(auditMotions(root), /重复动作 test\/idle/);
+  await fs.writeFile(path.join(root, 'first.json'), JSON.stringify(motion()));
+  await fs.writeFile(path.join(root, 'second.json'), JSON.stringify(motion()));
+  assert.equal((await auditMotions(root)).passed, 2);
+  await fs.writeFile(path.join(root, 'index.json'), JSON.stringify({ configs: [], motions: ['first.json', 'first.json'] }));
+  await assert.rejects(auditMotions(root), /Invalid index motions/);
+});
+
+test('motion audit accepts an empty subset and reports missing self-contained metadata', async t => {
+  const root = await fixture(t);
+  assert.equal((await auditMotions(root)).motions, 0);
+  const payload = motion(); delete payload.name;
+  await fs.writeFile(path.join(root, 'bad.motionbin'), binary(payload));
+  const report = await auditMotions(root);
+  assert.equal(report.failed, 1);
+  assert.match(report.results[0].error, /name/);
 });
 
 test('motion audit reports malformed tracks and accepts double-precision frame boundaries', () => {

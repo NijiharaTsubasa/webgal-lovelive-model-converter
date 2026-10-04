@@ -43,12 +43,7 @@ export async function readParameterInput(root) {
     catch (error) { throw new Error(`${name} 的参数文件不可用：${definition.file}（${error.message}）`); }
     const src = path.relative(root, file).split(path.sep).map(encodeURIComponent).join('/');
     const component = { type, name, src };
-    for (const field of ['fade_in', 'fade_out']) {
-      if (definition[field] !== undefined) {
-        if (!Number.isFinite(definition[field])) throw new Error(`${name} 的 ${field} 必须是有限数值`);
-        component[field] = definition[field];
-      }
-    }
+    if (type === 'garupa-motion') Object.assign(component, { fade_in: 500, fade_out: 500 });
     components.push(component);
   }
   if (model.motions !== undefined && (!model.motions || Array.isArray(model.motions) || typeof model.motions !== 'object')) {

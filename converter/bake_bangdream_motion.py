@@ -28,7 +28,7 @@ from converter.common.motion_binary import decode_motion
 
 
 def _validate_motion_payload(data: dict[str, Any], expected_name: str) -> set[str]:
-    if any(field in data for field in ("type", "name", "description", "motionGroup", "schemaVersion")):
+    if data.get("type") != "motion" or not isinstance(data.get("name"), str):
         raise ValueError(f"Invalid packaged metadata: {expected_name}")
 
     clip_ids: set[str] = set()
@@ -95,26 +95,10 @@ def _verify_export(
     clip_names_by_source: dict[str, list[str]],
     package_output: Path,
 ) -> tuple[int, int]:
-    config_path = package_output / "config.json"
-    if not config_path.is_file():
-        raise ValueError(f"Motion config missing: {config_path}")
-    config = json.loads(config_path.read_text(encoding="utf-8"))
-    if set(config) != {"components"} or not isinstance(config["components"], list):
-        raise ValueError(f"Invalid motion config: {config_path}")
-    entries = [
-        item for item in config["components"]
-        if item.get("type") == "motion" and item.get("motionGroup") == "garupa"
-    ]
-    entry_names = [str(item.get("name", "")) for item in entries]
-    entry_files = [str(item.get("src", "")) for item in entries]
-    if len(entry_names) != len(set(entry_names)) or len(entry_files) != len(set(entry_files)):
-        raise ValueError("Duplicate BanG Dream motion index entries")
-
     packaged_names: dict[str, set[str]] = {}
-    for entry in entries:
-        name = str(entry["name"])
-        motion_path = package_output / str(entry["src"])
+    for motion_path in sorted(package_output.rglob("*.motionbin")):
         data = decode_motion(motion_path.read_bytes())
+        name = motion_path.relative_to(package_output).with_suffix("").as_posix()
         names = _validate_motion_payload(data, name)
         packaged_names[name] = names
 
@@ -215,42 +199,6 @@ def select_reference_pair(input_root: Path, requested: str | None = None) -> tup
     raise ValueError(f"No matched BanG Dream head/body bundles with an Avatar in {input_root}")
 
 
-def _write_index(
-    output_root: Path,
-    new_entries: list[dict[str, Any]],
-    replace_all_bangdream: bool,
-) -> None:
-    config_path = output_root / "config.json"
-    old_config = (
-        json.loads(config_path.read_text(encoding="utf-8"))
-        if config_path.is_file()
-        else {"components": []}
-    )
-    old_entries = old_config.get("components", [])
-    if any(entry.get("type") != "motion" or entry.get("motionGroup") != "garupa"
-           for entry in old_entries):
-        raise ValueError(f"Unexpected component in Garupa motion manifest: {config_path}")
-    new_files = {entry["src"] for entry in new_entries}
-    preserved = [
-        entry
-        for entry in old_entries
-        if not replace_all_bangdream and entry.get("src") not in new_files
-    ]
-    components = sorted(
-        [*preserved, *new_entries],
-        key=lambda entry: (
-            str(entry.get("type", "")),
-            str(entry.get("motionGroup", "")),
-            str(entry.get("name", "")).casefold(),
-            str(entry.get("src", "")),
-        ),
-    )
-    output_root.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(
-        json.dumps({"components": components}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    (output_root / "index.json").write_text('{\n  "configs": ["config.json"]\n}\n', encoding="utf-8")
 
 
 def package_existing_motions(
@@ -304,7 +252,6 @@ def package_existing_motions(
     if len(files) != len(set(files)):
         raise ValueError("Duplicate motion package paths were generated")
 
-    _write_index(package_output, entries, replace_all_bangdream=False)
     package_count, verified_clips = _verify_export(
         selected, clip_names_by_source, package_output,
     )
@@ -340,7 +287,7 @@ def main() -> None:
     parser.add_argument("--reference-model", help="Optional head/body basename; otherwise select a matching pair with a bundled Avatar.")
     parser.add_argument("--sample-rate", type=int, default=60)
     parser.add_argument("--baked-output", type=Path, default=Path("baked_motions/bangdream"))
-    parser.add_argument("--package-output", type=Path, default=Path("output_packages/bangdream/motions"))
+    parser.add_argument("--package-output", type=Path, default=Path("output_packages/motion/garupa"))
     parser.add_argument(
         "--verify-only",
         action="store_true",

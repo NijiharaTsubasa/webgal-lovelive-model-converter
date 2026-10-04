@@ -85,44 +85,12 @@ def collect_baked_motions(baked_dir: Path | None, input_dir: Path, output: Path)
                     track.pop("path", None)
         motion_name = source_bundle or baked_file.name.removesuffix(".baked.json")
         dest_name = f"{motion_name}.motionbin"
-        (output / dest_name).write_bytes(encode_motion(data))
-        entries.append({
+        metadata = {
             "type": "motion",
-            "name": f"hasunosora/{motion_name}",
+            "name": motion_name,
             "description": descriptions.get(motion_name, ""),
             "motionGroup": "hasunosora",
-            "src": dest_name,
-        })
+        }
+        (output / dest_name).write_bytes(encode_motion({**metadata, **data}))
+        entries.append({**metadata, "src": dest_name})
     return entries
-
-
-def write_motion_index(output: Path, new_entries: list[dict[str, Any]]) -> None:
-    """Write the Hasunosora-only motion manifest."""
-    config_path = output / "config.json"
-    existing = json.loads(config_path.read_text(encoding="utf-8"))["components"] if config_path.is_file() else []
-    new_entries = [
-        {**entry, "type": "motion", "motionGroup": "hasunosora"}
-        for entry in new_entries
-    ]
-    new_names = {entry["name"] for entry in new_entries}
-    preserved = [
-        entry for entry in existing
-        if entry.get("type") == "motion"
-        and entry.get("motionGroup") == "hasunosora"
-        and entry["name"] not in new_names
-    ]
-    motions = sorted(
-        [*preserved, *new_entries],
-        key=lambda entry: (
-            str(entry.get("type", "")),
-            str(entry.get("motionGroup", "")),
-            str(entry.get("name", "")).casefold(),
-            str(entry.get("src", "")),
-        ),
-    )
-    output.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(
-        json.dumps({"components": motions}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    (output / "index.json").write_text('{\n  "configs": ["config.json"]\n}\n', encoding="utf-8")

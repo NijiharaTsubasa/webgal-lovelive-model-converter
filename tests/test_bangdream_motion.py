@@ -1,9 +1,11 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from converter.bake_bangdream_motion import select_reference_pair
+from converter.common.motion_binary import decode_motion
 
 from converter.bangdream.motion import (
     _bind_group_track_nodes,
@@ -13,6 +15,7 @@ from converter.bangdream.motion import (
     actor_slot,
     discover_motion_bundles,
     is_placeholder_clip_name,
+    package_motion,
     split_actor_motions,
 )
 
@@ -158,6 +161,29 @@ class BangDreamMotionTests(unittest.TestCase):
         self.assertFalse(states[0]["loop"])
         self.assertTrue(states[1]["loop"])
         self.assertEqual(program["commands"]["stop"], [])
+
+
+class MotionPackagingTests(unittest.TestCase):
+    def test_packaging_uses_source_path_and_self_contained_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baked = root / "motion.baked.json"
+            baked.write_text(json.dumps({
+                "schemaVersion": 8,
+                "clips": [clip("mot_demo_lp")],
+            }), encoding="utf-8")
+            output = root / "motion/garupa"
+            name = "charactertype/cool/003"
+            with patch("converter.bangdream.motion.controller_program", return_value=None):
+                entries, skipped = package_motion(baked, root / "source", name, output)
+            self.assertEqual(skipped, [])
+            self.assertEqual(entries[0]["src"], name + ".motionbin")
+            payload = decode_motion((output / entries[0]["src"]).read_bytes())
+            self.assertEqual(payload["name"], name)
+            self.assertEqual(payload["type"], "motion")
+            self.assertEqual(payload["motionGroup"], "garupa")
+            self.assertNotIn("src", payload)
+            self.assertFalse((output / "config.json").exists())
 
 
 if __name__ == "__main__":

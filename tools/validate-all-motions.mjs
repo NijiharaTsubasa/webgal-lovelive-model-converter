@@ -4,7 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
 import * as THREE from "three";
-import { validateMotionManifest, validateMotionPayload } from "webgal-lovelive-gltf-renderer/motion-manifest.js";
+import { validateMotionPayload } from "webgal-lovelive-gltf-renderer/motion-manifest.js";
 import { MotionPlayer } from "webgal-lovelive-gltf-renderer/motion-player.js";
 import { HUMANOID_BONE_NAMES } from "webgal-lovelive-gltf-renderer/skeleton-composer.js";
 import { decodeMotionBinary } from "webgal-lovelive-gltf-renderer/motion-binary.js";
@@ -257,12 +257,21 @@ export function clipSampleTimes(clip) {
   return [...frames].sort((a, b) => a - b).map(frame => frame === 0 ? 0 : Math.min(clip.duration, (frame + 0.25) / clip.sampleRate));
 }
 
-async function motionConfigs(root) {
+export function validateMotionResource(payload, label = "motion") {
+  require(payload?.type === "motion", `${label}: type must be motion`);
+  id(payload.name, `${label}.name`);
+  if (payload.description !== undefined) require(typeof payload.description === "string", `${label}.description must be a string`);
+  if (payload.motionGroup !== undefined) id(payload.motionGroup, `${label}.motionGroup`);
+  return payload;
+}
+
+export async function motionFiles(root) {
   const indexFile = path.join(root, 'index.json');
   try {
     const index = JSON.parse(await fs.readFile(indexFile, 'utf8'));
-    require(Array.isArray(index.configs) && new Set(index.configs).size === index.configs.length, 'Invalid index configs');
-    return index.configs.map(file => child(root, file));
+    const motions = index.motions ?? [];
+    require(Array.isArray(motions) && new Set(motions).size === motions.length, 'Invalid index motions');
+    return motions.map(file => child(root, file));
   } catch (error) {
     if (error.code !== 'ENOENT' || error.path !== indexFile) throw error;
   }
@@ -271,7 +280,11 @@ async function motionConfigs(root) {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) await scan(file);
-      else if (entry.isFile() && entry.name === 'config.json') files.push(file);
+      else if (entry.isFile() && entry.name.endsWith('.motionbin')) files.push(file);
+      else if (entry.isFile() && entry.name.endsWith('.json') && entry.name !== 'config.json') {
+        // JSON files in a resource tree may describe other resource types.
+        if (JSON.parse(await fs.readFile(file, 'utf8'))?.type === 'motion') files.push(file);
+      }
     }
   }
   await scan(root);
@@ -283,27 +296,17 @@ export async function auditMotions(directory, { expectedGroups = null, expectedC
     && typeof expectedGroups === 'object' && Object.values(expectedGroups).every(n => Number.isInteger(n) && n >= 0), 'expected-groups must be a JSON object of nonnegative counts');
   if (expectedClips !== null) require(Number.isInteger(expectedClips) && expectedClips >= 0, 'expected-clips must be nonnegative');
   const root = path.resolve(directory);
-  const work = [], payloadPaths = new Set();
-  for (const full of await motionConfigs(root)) {
-    const configPath = path.relative(root, full), config = JSON.parse(await fs.readFile(full, "utf8"));
-    require(Array.isArray(config.components), `Missing components: ${configPath}`);
-    if (!config.components.some(c => c.type === "motion")) continue;
-    validateMotionManifest(config, configPath);
-    for (const component of config.components.filter(c => c.type === "motion")) {
-      const file = child(path.dirname(full), component.src); payloadPaths.add(file);
-      work.push({ component, file, config: configPath });
-    }
-  }
-  require(work.length, "No motions found");
+  const work = await motionFiles(root), payloadPaths = new Set(work);
   const inventory = {};
-  for (const { component } of work) inventory[component.motionGroup ?? "<common>"] = (inventory[component.motionGroup ?? "<common>"] ?? 0) + 1;
-  if (expectedGroups !== null) requireExactCounts(inventory, expectedGroups, "Motion groups");
   const results = [], groups = {}, started = Date.now();
-  for (const { component, file, config } of work) {
-    const result = { name: component.name, motionGroup: component.motionGroup ?? null, config, file: path.relative(root, file).replaceAll("\\", "/") };
-    groups[component.motionGroup ?? "<common>"] = (groups[component.motionGroup ?? "<common>"] ?? 0) + 1;
+  for (const file of work) {
+    const result = { file: path.relative(root, file).replaceAll("\\", "/") };
     try {
       const bytes = await fs.readFile(file), payload = await readMotionFile(file, bytes);
+      validateMotionResource(payload, file);
+      result.name = payload.name; result.motionGroup = payload.motionGroup ?? null;
+      const group = payload.motionGroup ?? "<common>";
+      groups[group] = (groups[group] ?? 0) + 1;
       Object.assign(result, validateData(payload, file), probeSharedPayload(payload), {
         sha256: crypto.createHash("sha256").update(bytes).digest("hex"), error: null,
         payloadFields: Object.keys(payload).sort(),
@@ -312,13 +315,15 @@ export async function auditMotions(directory, { expectedGroups = null, expectedC
     results.push(result);
     if (results.length % 25 === 0 || results.length === work.length) progress(`Validated ${results.length}/${work.length}; failures ${results.filter(r => r.error).length}`);
   }
+  Object.assign(inventory, groups);
+  if (expectedGroups !== null) requireExactCounts(inventory, expectedGroups, "Motion groups");
   const failed = results.filter(r => r.error);
   const clipCount = results.reduce((sum, result) => sum + (result.clips ?? 0), 0);
   const coverageErrors = expectedClips === null || clipCount === expectedClips ? [] : [`Expected ${expectedClips} clips, found ${clipCount}`];
   const report = { root, motions: work.length, uniquePayloadFiles: payloadPaths.size, groups, passed: results.length - failed.length, failed: failed.length,
     expectedGroups, expectedClips, clipCount, coverageErrors,
     elapsedSeconds: (Date.now() - started) / 1000,
-    checks: ["Real validateMotionManifest/validateMotionPayload", "Global clip IDs and Program/pose references", "Sampling frame count (including Unity float32 boundaries); array lengths/finite/unit quaternions/continuous hemisphere", "Humanoid translation only Hips; corresponding finger-only pose collections", "Group track shapes", "Exact same payload object drives two different reference frames, bone offsets and human scales without model-specific variants", "Every original clip independently sampled on both rigs: actual rotation = reference * payload quaternion, scaled Hips translation, changing source tracks actually change", "Disposing playback restores synthetic-rig bone transforms"],
+    checks: ["Self-contained motion metadata and validateMotionPayload", "Global clip IDs and Program/pose references", "Sampling frame count (including Unity float32 boundaries); array lengths/finite/unit quaternions/continuous hemisphere", "Humanoid translation only Hips; corresponding finger-only pose collections", "Group track shapes", "Exact same payload object drives two different reference frames, bone offsets and human scales without model-specific variants", "Every original clip independently sampled on both rigs: actual rotation = reference * payload quaternion, scaled Hips translation, changing source tracks actually change", "Disposing playback restores synthetic-rig bone transforms"],
     limits: ["Synthetic-rig playback proves shared-data runtime behavior; it does not replace Unity-to-target pose/visual acceptance", "Group tracks receive structural/numeric validation only; these rigs do not contain model-specific targets", "Shared-rig probe samples the program at accumulated times 0, 0.13, 0.56 seconds; all clips receive structural/numeric verification"], results };
   return report;
 }

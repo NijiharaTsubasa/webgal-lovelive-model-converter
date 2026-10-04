@@ -40,13 +40,11 @@ $env:UNITY_EDITOR = 'D:\Unity\2022.3\Editor\Unity.exe'
 
 ### （可选，强烈建议）打包 Live2D 表情与动作
 
-WebGAL LoveLive专版支持在 glTF 3D 模型上播放《BanG Dream 少女乐团派对》游戏解包的 Live2D 动作；提供[表情适配器](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime)的模型还可播放对应的 Live2D 表情，丰富 3D 模型的表情表现。您可以复用 [WebGAL MyGO专版](https://github.com/boomwwww/webgal-mygo)社区制作的这类表情与动作。
+WebGAL LoveLive专版支持在 glTF 3D 模型上播放《BanG Dream 少女乐团派对》游戏解包的 Live2D 动作；提供[表情适配器](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime)的模型还可播放对应的 Live2D 表情，丰富 3D 模型的表情表现。您也可以复用 [WebGAL MyGO专版](https://github.com/boomwwww/webgal-mygo)社区制作的自制表情与动作。
 
-Live2D 立绘目录中可能有多份同名表情和动作，内容也可能被分别修改。为避免与这些资源混淆，需要将准备供 glTF 3D 模型使用的那份文件单独索引并打包，生成供引擎发现和加载资源的 `config.json`。
+[WebGAL LoveLive Terre](https://github.com/NijiharaTsubasa/webgal-lovelive-terre) 会自动发现游戏 `game/3d/mtn_exp` 目录中的 Live2D 表情与动作，手动复制文件的操作见该仓库 README.md。
 
-当前 [WebGAL LoveLive Terre](https://github.com/NijiharaTsubasa/webgal-lovelive-terre) 已支持自动发现指定目录下的 Live2D 表情与动作，但具体目录仍需手工指定。您可参考该仓库 README.md 中的相关说明进行操作。
-
-也可使用下方[预览：Live2D 表情与动作](#live2d-表情与动作)中的打包指令打包好后直接复制进 figure 目录。
+也可使用下方[预览：Live2D 表情与动作](#live2d-表情与动作)中的打包指令，打包好后直接复制进 `game/3d` 目录。
 
 ### 1. Link Like LoveLive!
 
@@ -68,11 +66,11 @@ Live2D 立绘目录中可能有多份同名表情和动作，内容也可能被�
 npm run convert:full:hasunosora
 ```
 
-模型与动作将输出在 `output_packages/hasunosora`。
+模型输出在 `output_packages/hasunosora`，动作输出在 `output_packages/motion/hasunosora`。
 
-模型可直接以目录为单位复制到 WebGAL LoveLive专版的 `figure` 目录下。请同时将 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime) 的 `packages/hasunosora_runtime` 目录复制到 `figure` 目录下，模型方可正常工作。
+模型可直接以目录为单位复制到 WebGAL LoveLive专版的 `3d/figure` 目录下。请同时将 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime) 的 `packages/hasunosora_runtime` 目录复制到 `3d/runtime` 目录下，模型方可正常工作。
 
-动作需将整个 `output_packages/hasunosora/motions` 目录复制到 `figure` 目录下，不可单独复制其中的子目录。
+将需要的动作从 `output_packages/motion/hasunosora` 复制到游戏的 `3d/motion/hasunosora`，建议保留相对目录结构，方便编辑时查找。
 
 ### 2. LoveLive All Stars
 
@@ -108,11 +106,11 @@ npm run classify:llas -- --category model --category navi
 npm run convert:full:llas
 ```
 
-模型与动作将输出在 `output_packages/llas`。
+模型输出在 `output_packages/llas`，动作输出在 `output_packages/motion/llas`。
 
-模型可直接以目录为单位复制到 WebGAL LoveLive专版的 `figure` 目录下。请同时将 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime) 的 `packages/llas_runtime` 目录复制到 `figure` 目录下，模型方可正常工作。
+模型可直接以目录为单位复制到 WebGAL LoveLive专版的 `3d/figure` 目录下。请同时将 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime) 的 `packages/llas_runtime` 目录复制到 `3d/runtime` 目录下，模型方可正常工作。
 
-动作需将整个 `output_packages/llas/motions` 目录复制到 `figure` 目录下，不可单独复制其中的子目录。
+将需要的动作从 `output_packages/motion/llas` 复制到游戏的 `3d/motion/llas`，建议保留相对目录结构，方便编辑时查找。
 
 ### 3. BanG Dream
 
@@ -128,9 +126,9 @@ npm run convert:full:llas
 npm run convert:full:bangdream
 ```
 
-模型与动作将输出在 `output_packages/bangdream`。
+模型输出在 `output_packages/bangdream`，动作输出在 `output_packages/motion/garupa`。
 
-动作需将整个 `output_packages/bangdream/motions` 目录复制到 WebGAL LoveLive专版的 `figure` 目录下，不可单独复制其中的子目录。模型暂不支持加载。
+将需要的动作从 `output_packages/motion/garupa` 复制到 WebGAL LoveLive专版的 `3d/motion/garupa`，建议保留相对目录结构，方便编辑时查找。模型暂不支持加载。
 
 ### 4. （可选）为模型生成预览图
 
@@ -239,7 +237,13 @@ npm run bake:llas -- --unity "D:\Unity\2022.3\Editor\Unity.exe"
 
 ## 输出文件说明
 
-模型和动作位于 `output_packages/<game>/`，动作集中在各游戏的 `motions/` 下。根目录 `config.json` 和 `index.json` 供本仓库的预览与验证工具使用。模型所需的 Shader、Behavior 和表情适配器由 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime)提供；各游戏的安装步骤见上文。
+模型位于 `output_packages/<game>/`，每个模型1个目录，可按需复制进 WebGAL_LoveLive，复制需以整目录为单位复制。
+
+动作位于 `output_packages/motion/<game>/`。每个动作1个 `.motionbin` ，包含动作名称、说明、兼容分组与播放数据，可以单文件或目录方式按需复制进 WebGAL_LoveLive。编辑器中显示的动作列表会按照目录层级组织。
+
+根目录 `config.json` 和 `index.json` 供本仓库的预览与验证工具使用，无需复制。
+
+模型所需的 Shader、Behavior 和表情适配器由 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime)提供；各游戏的安装步骤见上文。
 
 莲之空动作说明读取 `docs/hasunosora/motion-descriptions.csv` 的 description 列；文件或记录缺失时留空。
 
@@ -265,7 +269,7 @@ input_garupa_live2d/
 
 启动 `npm run dev` 后，在预览页将动作来源或表情来源切换为 BanG Dream 参数动作/表情，即可选择这些文件。修改输入后刷新页面即可更新。
 
-预览页按 `model.json` 中声明的名称和路径读取动作、表情及淡入淡出设置，无需执行转换或编写资源配置。若与已有输出中的参数资源同名，优先使用此目录中的文件；缺少引用文件时，页面会显示对应名称和路径。同一动作名下有多个文件时，分别显示为 `名称/1`、`名称/2` 等。
+预览页按 `model.json` 中声明的名称和路径读取此输入目录中的动作、表情。动作淡入淡出各为 `500` 毫秒，表情使用 `.exp.json` 内的设置。缺少引用文件时，页面会显示对应名称和路径。同一动作名下有多个文件时，分别显示为 `名称/1`、`名称/2` 等。
 
 要在 WebGAL 中使用这批动作和表情，执行：
 
@@ -273,9 +277,11 @@ input_garupa_live2d/
 npm run export:garupa-live2d
 ```
 
-该命令按 `model.json` 中声明的名称，将动作、表情文件复制到 `output_packages/garupa_live2d/`，生成 `config.json` 并更新预览索引。例如名称 `anon/angry01` 对应 `anon/angry01.mtn` 或 `anon/angry01.exp.json`。将整个 `garupa_live2d` 文件夹复制到游戏的 `figure` 目录，再由 [Terre LoveLive专版](https://github.com/NijiharaTsubasa/webgal-lovelive-terre)打开一次工程，自动触发更新资源清单后即可使用。重复执行会覆盖同名文件。
+该命令按 `model.json` 中声明的名称，将动作、表情文件复制到 `output_packages/mtn_exp/`。例如名称 `mutsumi/maskon/angry01` 对应 `mutsumi/maskon/angry01.mtn` 或 `mutsumi/maskon/angry01.exp.json`。重复执行会覆盖同名文件。
 
-在游戏中的参数资源目录添加或删除 `.mtn`、`.exp.json` 后，Terre 会同步更新 `config.json` 和资源清单。新增资源的名称按相对于该配置目录的实际路径生成，去掉文件扩展名。动作淡入淡出默认各为 `500` 毫秒，可在 `config.json` 中修改 `fade_in`、`fade_out`；重新索引时保留已有设置。表情淡入淡出使用 `.exp.json` 内的设置。资源全部删除后保留 `config.json`，以后添加文件仍可自动发现。
+将 `mtn_exp` 文件夹复制到游戏的 `3d` 目录，使文件位于 `3d/mtn_exp/mutsumi/maskon/angry01.mtn` 等路径，即可在[Terre LoveLive专版](https://github.com/NijiharaTsubasa/webgal-lovelive-terre)中看到相应动作和表情。
+
+在游戏的 `3d/mtn_exp` 中添加或删除 `.mtn`、`.exp.json` 后，Terre LoveLive专版中的 3D 立绘动作和表情列表会自动刷新，名称按相对于 `3d/mtn_exp` 的实际路径生成。
 
 ## 测试
 
@@ -297,7 +303,7 @@ npm run export:garupa-live2d
 | `tools/run-browser-tests.mjs` | 运行 JS 和浏览器测试，一次运行一个测试文件。与上面的安装脚本使用相同的浏览器路径。 | `npm run test:js` 或 `npm run test:integration` |
 | `tools/validate-resource-packages.mjs` | 扫描输出目录，检查配置引用的文件、模型表情、物理数据，以及材质引用的 Shader 和模型引用的 Behavior。支持独立 runtime 目录、参数动作与表情包。 | `node tools/validate-resource-packages.mjs --output <输出目录> --runtime <runtime的packages目录>` |
 | `tools/validate-all-motions.mjs` | 扫描通用动作包，检查 JSON 或二进制正文，并在两套不同的模拟骨架上验证采样和停止后的骨骼状态恢复。 | `node tools/validate-all-motions.mjs --root <输出目录>`；默认读取 `output_packages` |
-| `tools/refresh_hasunosora_motion_descriptions.py` | 将动作说明表中的 description 写入 `output_packages/hasunosora/motions/config.json`，无需重新烘焙或转换。 | `python -m tools.refresh_hasunosora_motion_descriptions`；之后执行 `npm run merge:index` 更新预览清单 |
+| `tools/refresh_hasunosora_motion_descriptions.py` | 将动作说明表中的 description 写入 `output_packages/motion/hasunosora` 下的动作文件。 | `python -m tools.refresh_hasunosora_motion_descriptions`；之后执行 `npm run merge:index` 更新预览清单 |
 
 两个浏览器测试脚本都支持用 `PLAYWRIGHT_BROWSERS_PATH` 指定浏览器存放位置。
 

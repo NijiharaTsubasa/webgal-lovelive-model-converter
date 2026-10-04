@@ -11,7 +11,7 @@ from converter.bake_hasunosora import main as bake_hasunosora
 from converter.bake_llas import verify_body_motion
 from converter.bangdream import discover_bundle_inputs
 from converter.convert_bangdream import main as convert_bangdream
-from converter.hasunosora.motion import collect_baked_motions, write_motion_index
+from converter.hasunosora.motion import collect_baked_motions
 
 
 class HasunosoraSubsetTests(unittest.TestCase):
@@ -42,7 +42,7 @@ class HasunosoraSubsetTests(unittest.TestCase):
                 bake_hasunosora()
             run.assert_called_once()
 
-    def test_current_motion_subset_ignores_stale_cache_and_preserves_manifest(self):
+    def test_current_motion_subset_ignores_stale_cache_and_preserves_other_files(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             inputs, baked, output = (root / name for name in ("input", "baked", "output"))
@@ -54,17 +54,14 @@ class HasunosoraSubsetTests(unittest.TestCase):
                 "schemaVersion": 8, "sourceBundle": "mot_current", "clips": [],
             }), encoding="utf-8")
             (baked / "mot_stale.baked.json").write_text("invalid stale cache", encoding="utf-8")
-            old = {"type": "motion", "name": "hasunosora/mot_stale", "description": "",
-                   "motionGroup": "hasunosora", "src": "mot_stale.motionbin"}
-            (output / "config.json").write_text(json.dumps({"components": [old]}), encoding="utf-8")
+            (output / "mot_stale.motionbin").write_bytes(b"existing motion")
             with patch("converter.hasunosora.motion.controller_program", return_value={"layers": []}) as compile:
                 entries = collect_baked_motions(baked, inputs, output)
             compile.assert_called_once()
             self.assertEqual(compile.call_args.args[0], inputs / "mot_current.assetbundle")
-            self.assertEqual([entry["name"] for entry in entries], ["hasunosora/mot_current"])
-            write_motion_index(output, entries)
-            result = json.loads((output / "config.json").read_text(encoding="utf-8"))["components"]
-            self.assertIn(old, result)
+            self.assertEqual([entry["name"] for entry in entries], ["mot_current"])
+            self.assertTrue((output / "mot_current.motionbin").is_file())
+            self.assertEqual((output / "mot_stale.motionbin").read_bytes(), b"existing motion")
 
     def test_current_motion_without_bake_fails_including_missing_cache_directory(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -96,7 +93,7 @@ class HasunosoraSubsetTests(unittest.TestCase):
             with patch("converter.hasunosora.motion.controller_program", return_value={"layers": []}) as compile:
                 entries = collect_baked_motions(baked, inputs, root / "output")
             self.assertEqual(compile.call_args.args[0], inputs / "mot_00_001.assetbundle")
-            self.assertEqual(entries[0]["name"], "hasunosora/m_00_001")
+            self.assertEqual(entries[0]["name"], "m_00_001")
 
 
 class LlasMotionSampleTests(unittest.TestCase):
@@ -175,7 +172,7 @@ class BangDreamSubsetTests(unittest.TestCase):
                     convert_bangdream()
                 package.assert_not_called()
                 configs = json.loads((output / "index.json").read_text(encoding="utf-8"))["configs"]
-                self.assertEqual(configs, ["model/config.json", "motions/config.json"] if preserve else ["model/config.json"])
+                self.assertEqual(configs, ["model/config.json"])
                 if preserve:
                     self.assertEqual((output / "motions" / "config.json").read_text(encoding="utf-8"), old_config)
 

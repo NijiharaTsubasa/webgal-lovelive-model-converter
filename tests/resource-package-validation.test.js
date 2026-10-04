@@ -219,9 +219,10 @@ test("parameter motions, expressions and adapters validate their package files",
   assert.ok((await auditResourcePackages(directory, { runtime: false })).errors.some(error => /face.js/.test(error.message)));
 });
 
-test("binary motion packages are decoded before payload validation", async (t) => {
-  const directory = await packageFixture(t, [{ type: "motion", name: "idle", src: "idle.motionbin" }]);
-  const payload = { clips: [{ id: "idle", name: "idle", duration: 0, sampleRate: 30, frames: 2,
+test("self-contained binary motions are indexed and decoded before payload validation", async (t) => {
+  const directory = await packageFixture(t, []);
+  await fs.writeFile(path.join(directory, 'index.json'), JSON.stringify({ configs: ['deps/config.json'], motions: ['deps/idle.motionbin'] }));
+  const payload = { type: 'motion', name: 'source_idle', description: '', motionGroup: 'test', clips: [{ id: "idle", name: "idle", duration: 0, sampleRate: 30, frames: 2,
     tracks: [{ bone: "Hips", rotation: { type: "f32", offset: 0, length: 8 } }] }],
     auxiliaryClips: [], leftHandPoses: [], rightHandPoses: [],
     program: { parameters: [], commands: {}, baseLayer: "base", layers: [{ id: "base", weight: 1, blend: "override", initialState: "idle",
@@ -234,4 +235,7 @@ test("binary motion packages are decoded before payload validation", async (t) =
   await fs.writeFile(path.join(directory, "deps/idle.motionbin"), bytes);
   const report = await auditResourcePackages(directory, { runtime: false });
   assert.equal(report.passed, true, JSON.stringify(report.errors));
+  assert.equal(report.counts.motion, 1);
+  await fs.unlink(path.join(directory, 'deps/idle.motionbin'));
+  assert.equal((await auditResourcePackages(directory, { runtime: false })).passed, false);
 });

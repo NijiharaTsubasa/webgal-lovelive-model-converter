@@ -53,7 +53,7 @@ class LlasConversionTests(unittest.TestCase):
             with patch("converter.llas.active_sources", return_value=inventory):
                 self.assertEqual(discover_models(root), [wanted])
 
-    def test_motion_package_uses_source_loop_flag_and_config_relative_src(self) -> None:
+    def test_motion_package_uses_source_loop_flag_and_hierarchical_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "idle.unity3d"
@@ -79,12 +79,15 @@ class LlasConversionTests(unittest.TestCase):
             }), encoding="utf-8")
             motion_root = root / "package" / "motions"
             with patch("converter.llas._source_clip_loop_flags", return_value={"Idle": True}):
-                component = package_motion(source, baked, motion_root, "idle")
+                component = package_motion(source, baked, motion_root, "ch0109_rby_idle1_l")
 
-            self.assertEqual(component["src"], "idle.motionbin")
-            self.assertEqual(component["name"], "llas/idle")
+            self.assertEqual(component["src"], "ch0109_rby/idle1_l.motionbin")
+            self.assertEqual(component["name"], "ch0109_rby_idle1_l")
             self.assertEqual(component["description"], "")
-            payload = decode_motion((motion_root / "idle.motionbin").read_bytes())
+            payload = decode_motion((motion_root / component["src"]).read_bytes())
+            self.assertEqual(payload["type"], "motion")
+            self.assertEqual(payload["name"], "ch0109_rby_idle1_l")
+            self.assertEqual(payload["motionGroup"], "llas")
             state = payload["program"]["layers"][0]["states"][0]
             self.assertTrue(state["loop"])
             self.assertEqual(payload["clips"][0]["tracks"][0]["translation"], [0.0, -2.0, 0.0] * 2)

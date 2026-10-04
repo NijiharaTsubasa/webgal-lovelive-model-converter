@@ -23,23 +23,21 @@ export async function exportGarupaLive2d(input, output) {
     const identity = process.platform === 'win32' ? destination.toLowerCase() : destination;
     if (destinations.has(identity)) throw new Error(`资源输出路径冲突：${relativeFile}`);
     destinations.add(identity);
-    return { component, destination, src: segments.map(encodeURIComponent).join('/') + extension };
+    return { component, destination };
   });
-  const config = { components: copies.map(({ component, src }) => ({ ...component, src })) };
   for (const { component, destination } of copies) {
     const relativeFile = component.src.split('/').map(decodeURIComponent).join(path.sep);
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.copyFile(path.join(input, relativeFile), destination);
   }
-  await fs.writeFile(path.join(output, 'config.json'), JSON.stringify(config, null, 2) + '\n', 'utf8');
-  return config;
+  return copies.length;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
-    const output = path.resolve('output_packages/garupa_live2d');
-    const config = await exportGarupaLive2d('input_garupa_live2d/.mtn_exp', output);
-    console.log(`已导出 ${config.components.length} 个参数动作和表情：${output}`);
+    const output = path.resolve('output_packages/mtn_exp');
+    const count = await exportGarupaLive2d('input_garupa_live2d/.mtn_exp', output);
+    console.log(`已导出 ${count} 个参数动作和表情：${output}`);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

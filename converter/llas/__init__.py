@@ -278,15 +278,17 @@ def package_motion(
     data["program"] = program
 
     motion_root.mkdir(parents=True, exist_ok=True)
-    destination = motion_root / f"{name}.motionbin"
-    destination.write_bytes(encode_motion(data))
-    return {
+    metadata = {
         "type": "motion",
-        "name": motion_resource_name(name),
+        "name": name,
         "description": "",
         "motionGroup": "llas",
-        "src": f"{name}.motionbin",
     }
+    relative_path = f"{motion_resource_name(name).removeprefix('llas/')}.motionbin"
+    destination = motion_root / relative_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(encode_motion({**metadata, **data}))
+    return {**metadata, "src": relative_path}
 
 
 def package_all_motions(
@@ -295,7 +297,7 @@ def package_all_motions(
     baked_root: Path,
 ) -> list[dict[str, Any]]:
     components: list[dict[str, Any]] = []
-    motion_root = output_root / "motions"
+    motion_root = output_root.parent / "motion" / "llas"
     inventory = active_sources(input_root)
     for source in inventory.motions:
         name = inventory.motion_names[source]
@@ -304,23 +306,9 @@ def package_all_motions(
             raise FileNotFoundError(
                 f"{source.name}: missing baked Humanoid motion {baked_file}; run python -m converter.bake_llas first"
             )
-        components.append(package_motion(source, baked_file, motion_root, name))
-        print(f"[llas] {source.name} -> motions/{name}.motionbin")
-    if components:
-        config_path = motion_root / "config.json"
-        existing = json.loads(config_path.read_text(encoding="utf-8"))["components"] if config_path.is_file() else []
-        new_names = {component["name"] for component in components}
-        merged = sorted(
-            [*(component for component in existing
-               if component.get("type") == "motion"
-               and component.get("motionGroup") == "llas"
-               and component["name"] not in new_names), *components],
-            key=lambda component: component["name"],
-        )
-        config_path.write_text(
-            json.dumps({"components": merged}, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        component = package_motion(source, baked_file, motion_root, name)
+        components.append(component)
+        print(f"[llas] {source.name} -> motion/llas/{component['src']}")
     return components
 
 

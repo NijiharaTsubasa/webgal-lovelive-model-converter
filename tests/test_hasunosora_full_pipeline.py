@@ -2,37 +2,33 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from converter.hasunosora.motion import write_motion_index
+from converter.hasunosora.motion import collect_baked_motions
+from converter.common.motion_binary import decode_motion
 
 
 class HasunosoraFullPipelineTests(unittest.TestCase):
-    def test_hasunosora_motion_manifest_contains_only_hasunosora(self):
+    def test_incremental_self_contained_motion_preserves_other_files(self):
         with tempfile.TemporaryDirectory() as tmp:
-            output = Path(tmp)
-            (output / "config.json").write_text(
-                json.dumps({
-                    "components": [{
-                        "type": "motion",
-                        "name": "garupa-motion",
-                        "src": "garupa/motion.json",
-                        "motionGroup": "garupa",
-                    }],
-                }),
-                encoding="utf-8",
-            )
-
-            write_motion_index(output, [{
-                "type": "motion",
-                "name": "mot_00_41021",
-                "src": "mot_00_41021.motionbin",
-            }])
-
-            motions = json.loads((output / "config.json").read_text(encoding="utf-8"))["components"]
-            self.assertEqual(
-                [(entry["name"], entry["motionGroup"]) for entry in motions],
-                [("mot_00_41021", "hasunosora")],
-            )
+            root = Path(tmp)
+            inputs, baked, output = (root / name for name in ("input", "baked", "motion/hasunosora"))
+            for directory in (inputs, baked, output):
+                directory.mkdir(parents=True)
+            retained = output / "other.motionbin"
+            retained.write_bytes(b"unrelated existing motion")
+            (inputs / "mot_00_41021.assetbundle").touch()
+            (baked / "mot_00_41021.baked.json").write_text(json.dumps({
+                "schemaVersion": 8, "sourceBundle": "mot_00_41021", "clips": [],
+            }), encoding="utf-8")
+            with patch("converter.hasunosora.motion.controller_program", return_value={"layers": []}):
+                collect_baked_motions(baked, inputs, output)
+            data = decode_motion((output / "mot_00_41021.motionbin").read_bytes())
+            self.assertEqual(data["name"], "mot_00_41021")
+            self.assertEqual(data["motionGroup"], "hasunosora")
+            self.assertEqual(retained.read_bytes(), b"unrelated existing motion")
+            self.assertFalse((output / "config.json").exists())
+            self.assertFalse((output / "index.json").exists())
 
 
 if __name__ == "__main__":
