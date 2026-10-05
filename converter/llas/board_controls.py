@@ -63,23 +63,12 @@ def append_board_controls(builder, sampled):
                     if target not in names:
                         raise ValueError(f'Board blink endpoint absent: {target}')
                     controls['blink'] = replacement(base, target)
-            else:
-                target, base = ('mouth/A' if label == 'Smile' else base), 'mouth/Smile'
-                if target != base:
-                    controls['speech'] = replacement(base, target)
             states.append({'name': label, 'poses': {base: 1}, **({'controls': controls} if controls else {})})
-        groups.append({'name': domain, 'states': states})
-    presets = [{'name': 'Neutral', 'selections': {'eye': 'Open', 'mouth': 'A'}}]
-    paired = set(available['eye']) & set(available['mouth'])
-    for label in available['eye']:
-        if label == 'Open':
-            continue
-        presets.append({'name': label, 'selections': {
-            'eye': label, 'mouth': label if label in paired and label != 'N' else 'A'}})
+        groups.append({'name': domain, 'type': domain, 'states': states})
     parameters = {'inputNode': SIGNAL_NODE, 'minRateToActive': struct.unpack('<f', bytes.fromhex('5c8f023f'))[0],
         'domains': [{'name': d['name'], 'defaults': deepcopy(d['defaults']),
                      'entries': [{'morph': e['name'], 'visibility': deepcopy(e['visibility'])}
                                  for e in d['entries']]} for d in domains]}
-    return {'morphPoses': recipes, 'expressionGroups': groups, 'expressions': presets,
-            'defaultExpression': 'Neutral', 'behaviors': [
+    return {'morphPoses': recipes, 'expressionGroups': groups,
+            'defaultExpression': {'eye': 'Open', 'closed': 'Smile', 'open': 'A'}, 'behaviors': [
                 {'name': 'LLAS.BoardFace', 'required': True, 'parameters': parameters}]}

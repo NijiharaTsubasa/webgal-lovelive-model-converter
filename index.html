@@ -27,8 +27,9 @@
           <label>表情来源<select id="face-source"><option value="native">模型自带表情</option><option value="garupa">BanG Dream 参数表情</option></select></label>
           <label id="parameter-expression-row" hidden>参数表情<select id="parameter-expression"><option value="">无 EXP（保留动作表情）</option></select></label>
           <p id="parameter-face-note" hidden></p>
-          <label id="native-expression-row">面部表情<select id="expression"><option value="">默认表情</option></select></label>
-          <div id="expression-groups"></div>
+          <div id="native-expression-row">
+            <div id="expression-groups"></div>
+          </div>
           <label>双眼开合 <output id="eye-open-value">1.00</output><input id="eye-open" type="range" min="0" max="1" step="0.01" value="1" /></label>
           <label>默认说话强度 <output id="mouth-open-value">0.00</output><input id="mouth-open" type="range" min="0" max="1" step="0.01" value="0" /></label>
           <label id="parameter-speech-row" hidden><input id="parameter-speech" type="checkbox" />用滑杆接管参数嘴巴（取消则保留 MTN／EXP）</label>

@@ -4,7 +4,7 @@ This is the per-game converter. It walks the Hasu input directory, finds
 character body bundles, exports each one through the generic Unity -> glTF
 pipeline in :mod:`converter.common`, and (for characters that ship an
 expression_controller) additionally exports a per-character expression
-package (named Morph recipes, independent face/mouth groups and presets).
+package (named Morph recipes and independent eye/mouth choices).
 
 Anything generic (GLB writer, packed-clip decoder and normalized-model
 exporter) lives in :mod:`converter.common`. What stays here is the Hasu-specific
@@ -294,6 +294,36 @@ def _pose_targets(model: NormalizedExport, pose: dict[tuple[int, int, str], floa
     return targets
 
 
+def _consumer_wink_blink_pose(pose: dict[tuple[int, int, str], float]) -> dict[tuple[int, int, str], float] | None:
+    """Close the open side of source bilateral eyelid channels for host blink.
+
+    Source Wink clips keep one Close or SmileB channel at full closure and the
+    opposite channel below it. Preserve all other channels, including eyebrows.
+    """
+    by_name = {(key[0], key[2]): key for key in pose}
+    target = dict(pose)
+    changed = False
+    for key, value in pose.items():
+        node, _, name = key
+        if value < 1 - 1e-6:
+            continue
+        for family in ('Eyelids_Close', 'Eyelids_SmileB'):
+            for closed, opened in (('L', 'R'), ('R', 'L')):
+                suffix = f'{family}_{closed}'
+                if not name.endswith(suffix):
+                    continue
+                opposite_closed = any(other_node == node and other_value >= 1 - 1e-6
+                                      and other_name.endswith((f'Eyelids_Close_{opened}', f'Eyelids_SmileB_{opened}'))
+                                      for (other_node, _, other_name), other_value in pose.items())
+                if opposite_closed:
+                    continue
+                other = by_name.get((node, name[:-1] + opened))
+                if other is not None and pose[other] < 1 - 1e-6:
+                    target[other] = value
+                    changed = True
+    return target if changed else None
+
+
 def build_expression_package(
     model: NormalizedExport,
     controller_data: list[ExportedExpression],
@@ -304,9 +334,10 @@ def build_expression_package(
     source recipes. High-level viseme interpolation is a consumer adaptation,
     not a claim about arbitrary source Direct Blend Tree inputs.
     """
-    result: dict[str, Any] = {"morphPoses": [], "expressionGroups": [], "expressions": []}
+    result: dict[str, Any] = {"morphPoses": [], "expressionGroups": []}
     face_states: list[dict[str, Any]] = []
     mouth_states: list[dict[str, Any]] = []
+    defaults: dict[str, dict[str, str]] = {}
 
     def add_pose(name: str, pose: dict[tuple[int, int, str], float]) -> str:
         if any(not math.isfinite(value) for value in pose.values()):
@@ -337,28 +368,36 @@ def build_expression_package(
                    for key in (set(snapshot) | set(blink_pose)) - mouth_keys):
                 blink_name = add_pose(f"face.{entry.name}.blink", blink_pose)
                 face_state["controls"] = {"blink": {face_pose: 0, blink_name: 1}}
+        else:
+            blink_pose = _consumer_wink_blink_pose({key: value for key, value in snapshot.items()
+                                                   if key not in mouth_keys})
+            if blink_pose is not None:
+                blink_name = add_pose(f"face.{entry.name}.blink", blink_pose)
+                face_state["controls"] = {"blink": {face_pose: 0, blink_name: 1}}
         face_states.append(face_state)
 
-        mouth_state: dict[str, Any] = {"name": entry.name, "poses": {}}
+        selection = {"eye": entry.name}
         if len(mouth_poses) == 1:
             mouth_pose = add_pose(f"mouth.{entry.name}", mouth_poses[0])
-            mouth_state["poses"] = {mouth_pose: 1}
+            mouth_states.append({"name": entry.name, "poses": {mouth_pose: 1}})
+            selection.update(closed=entry.name, open=entry.name)
         elif mouth_poses:
             lips = {lip: add_pose(f"mouth.{entry.name}.{lip}", pose)
                     for lip, pose in zip(("close", "a", "i", "u", "e", "o"), mouth_poses)}
-            mouth_state["poses"] = {lips["close"]: 1}
-            visemes = {lip: {lips["close"]: 0, lips[lip]: 1} for lip in "aiueo"}
-            mouth_state["controls"] = {
-                "speech": dict(visemes["a"]), "visemes": visemes,
-            }
-        mouth_states.append(mouth_state)
-        result["expressions"].append({"name": entry.name,
-                                      "selections": {"face": entry.name, "mouth": entry.name}})
+            visemes = {lip: {lips[lip]: 1} for lip in "aiueo"}
+            for lip, pose in lips.items():
+                mouth_states.append({"name": f"{entry.name}/{lip}", "poses": {pose: 1},
+                                     "controls": {"visemes": visemes}})
+            selection.update(closed=f"{entry.name}/close", open=f"{entry.name}/a")
+        defaults[entry.name] = selection
     if face_states:
-        result["expressionGroups"] = [{"name": "face", "states": face_states},
-                                      {"name": "mouth", "states": mouth_states}]
-        result["defaultExpression"] = next((entry["name"] for entry in result["expressions"]
-                                             if entry["name"] == "normal"), result["expressions"][0]["name"])
+        result["expressionGroups"] = [{"name": "face", "type": "eye", "states": face_states}]
+        if mouth_states:
+            result["expressionGroups"].append({"name": "mouth", "type": "mouth", "states": mouth_states})
+        selected = dict(defaults.get("normal", defaults[face_states[0]["name"]]))
+        if mouth_states and "closed" not in selected:
+            selected.update(closed=mouth_states[0]["name"], open=mouth_states[0]["name"])
+        result["defaultExpression"] = selected
     return result
 
 
@@ -468,7 +507,8 @@ def convert(
         }
         (package_dir / "config.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         packages.append(f"{package_name}/config.json")
-        print(f"[character] [normalized] {model_bundle.name} -> {package_name} ({len(expressions['expressions'])} expressions)")
+        state_count = sum(len(group['states']) for group in expressions['expressionGroups'])
+        print(f"[character] [normalized] {model_bundle.name} -> {package_name} ({state_count} facial states)")
 
     if requested - matched:
         raise ValueError(f"Hasunosora requested models not found: {sorted(requested - matched)}")

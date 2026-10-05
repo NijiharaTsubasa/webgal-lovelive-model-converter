@@ -87,32 +87,45 @@ class BangDreamExpressionTests(unittest.TestCase):
         states = groups(package)
         self.assertEqual(list(states), ["face", "mouth"])
         self.assertEqual(len(states["face"]), 8)
-        self.assertEqual(len(states["mouth"]), 2)
-        self.assertEqual(package["defaultExpression"], "Neutral")
-        for preset in package["expressions"]:
-            self.assertEqual(set(preset), {"name", "selections"})
-            for group, name in preset["selections"].items():
-                self.assertIn(name, states[group])
+        self.assertEqual(set(states["mouth"]), {"Neutral", "Joy", "A", "I"})
+        self.assertEqual(package["defaultExpression"], {"eye": "Neutral", "closed": "Neutral", "open": "A"})
+        self.assertNotIn("expressions", package)
         face = evaluate(package, states["face"]["Joy-WinkL"], "blink", 1)
         self.assertEqual(face["face_Base_obj", "face_main_eye_wink_L"], 1)
         self.assertNotIn("blink", states["face"]["Joy-WinkL"].get("controls", {}))
         self.assertTrue(all("mouth" not in morph for _, morph in face))
-        mouth = evaluate(package, states["mouth"]["Joy"], "speech", 0.6)
-        self.assertEqual(mouth["face_Base_obj", "face_main_mouth_joy"], 0.6)
+        mouth = evaluate(package, states["mouth"]["Joy"])
+        self.assertEqual(mouth["face_Base_obj", "face_main_mouth_joy"], 1)
         self.assertTrue(all("eye" not in morph for _, morph in mouth))
-        self.assertEqual(states["mouth"]["Neutral"]["controls"]["speech"], {"mouth.A": 1})
+        self.assertEqual(states["mouth"]["Neutral"]["poses"], {})
+        self.assertEqual(states["mouth"]["Joy"]["controls"]["visemes"]["a"], {"mouth.A": 1})
+        self.assertTrue(all("speech" not in state.get("controls", {}) for state in states["mouth"].values()))
 
     def test_uses_exported_inventory_without_reenumeration(self):
         with patch("converter.bangdream.mesh_morph_names", side_effect=AssertionError("must use exported inventory")):
             package = self.extract()
-        self.assertEqual(len(package["expressions"]), 8)
+        self.assertEqual(len(groups(package)["face"]), 8)
 
     def test_static_head_has_no_expression_controls(self):
         self.mesh_morphs = {}
         self.face['Layers'][0]['Mixers'].append({'Name': 'Sad', 'Shapes': []})
         with patch('converter.bangdream.mesh_morph_names', return_value={}):
             self.assertEqual(self.extract(),
-                             {'morphPoses': [], 'expressionGroups': [], 'expressions': []})
+                             {'morphPoses': [], 'expressionGroups': []})
+
+    def test_empty_source_mouth_and_missing_a_are_valid(self):
+        self.face['Layers'][2]['Mixers'] = [{'Name': 'Rest', 'Shapes': []}, {'Name': 'I', 'Shapes': [4]}]
+        package = self.extract()
+        self.assertEqual(package['defaultExpression'], {'eye': 'Neutral', 'closed': 'Rest', 'open': 'Rest'})
+        self.assertEqual(groups(package)['mouth']['Rest']['poses'], {'mouth.Rest': 1})
+        self.assertEqual(groups(package)['mouth']['I']['controls']['visemes'], {'i': {'mouth.I': 1}})
+
+    def test_zero_input_name_cannot_collide_with_source_lipsync(self):
+        self.face['Layers'][2]['Mixers'].append({'Name': 'Neutral', 'Shapes': [4]})
+        package = self.extract()
+        self.assertEqual(package['defaultExpression']['closed'], 'Neutral_')
+        self.assertEqual(groups(package)['mouth']['Neutral_']['poses'], {})
+        self.assertEqual(groups(package)['mouth']['Neutral']['poses'], {'mouth.Neutral': 1})
 
     def test_empty_export_does_not_hide_source_morph_loss(self):
         with patch('converter.bangdream.mesh_morph_names', return_value=self.mesh_morphs):

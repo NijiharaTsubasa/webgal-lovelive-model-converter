@@ -43,7 +43,7 @@ class HasunosoraCostumeLabelsTests(unittest.TestCase):
 
             component = order_model_component({
                 "type": "model", "name": "3d_costume_1001102101",
-                "group": "hasunosora", "expressions": [],
+                "group": "hasunosora", "expressionGroups": [],
                 "description": labels["3d_costume_1001102101"],
             })
             self.assertEqual(list(component)[:3], ["type", "name", "description"])

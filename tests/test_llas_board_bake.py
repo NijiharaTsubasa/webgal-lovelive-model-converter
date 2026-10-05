@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from converter.llas.board_bake import board_pose_path, _assemble_boards, bake_board_faces, _source_bindings
+from converter.llas.board_controls import append_board_controls, SIGNAL_NODE
 
 
 def fixture():
@@ -23,6 +24,29 @@ def fixture():
 
 
 class BoardBakeTests(unittest.TestCase):
+    def test_board_controls_expose_raw_signals_and_default_endpoints(self):
+        sampled = {'domains': [
+            {'name': domain, 'defaults': {domain + '_neutral': True}, 'entries': [
+                {'name': domain + '/' + label, 'visibility': {domain + '_neutral': label == 'Open'}}
+                for label in labels]}
+            for domain, labels in [('eye', ['Open', 'Close', 'WinkL', 'CloseSmile']),
+                                   ('mouth', ['N', 'Smile', 'A', 'Sad'])]]}
+        builder = SimpleNamespace(document={
+            'nodes': [{'name': 'Head'}, {'name': 'eye_neutral', 'mesh': 0},
+                      {'name': 'mouth_neutral', 'mesh': 0}], 'meshes': [{}]},
+            add_accessor=Mock(side_effect=[0, 1]))
+        result = append_board_controls(builder, sampled)
+        self.assertNotIn('expressions', result)
+        self.assertEqual(result['defaultExpression'], {'eye': 'Open', 'closed': 'Smile', 'open': 'A'})
+        self.assertEqual([g['type'] for g in result['expressionGroups']], ['eye', 'mouth'])
+        eyes, mouths = [{s['name']: s for s in g['states']} for g in result['expressionGroups']]
+        self.assertEqual(mouths['Sad'], {'name': 'Sad', 'poses': {'mouth/Sad': 1}})
+        self.assertEqual(eyes['WinkL']['controls']['blink'], {'eye/WinkL': 0, 'eye/CloseSmile': 1})
+        self.assertNotIn('controls', eyes['Close'])
+        recipes = {p['name']: p['targets'] for p in result['morphPoses']}
+        self.assertEqual(recipes['mouth/Sad'], {SIGNAL_NODE: {'mouth/Sad': 1}})
+        self.assertEqual(result['behaviors'][0]['parameters']['domains'][1]['entries'][3]['morph'], 'mouth/Sad')
+
     def test_member_not_shared_face_keys_the_board_output(self):
         for name in ['ch9999_co0002_member', 'ch9999_co0069_member']:
             self.assertEqual(board_pose_path(SimpleNamespace(name=name), 'baked'),

@@ -44,16 +44,21 @@ def evaluate(definition, selections, blink=0, speech=0, visemes=None):
     poses = {p['name']: p['targets'] for p in definition['morphPoses']}
     result = {node: {shape: 0 for shape in weights}
               for pose in poses.values() for node, weights in pose.items()}
-    for domain, label in selections.items():
+    selected_groups = {}
+    if 'eye' in selections:
+        selected_groups['eye'] = selections['eye']
+    if 'closed' in selections:
+        selected_groups['mouth'] = selections['closed']
+    for domain, label in selected_groups.items():
         selected = state(definition, domain, label)
         base = selected['poses']
         weights = dict(base)
         controls = selected.get('controls', {})
         inputs = [(controls.get('blink', {}), blink)]
-        if visemes is None:
-            inputs.append((controls.get('speech', {}), speech))
-        else:
-            inputs.extend((controls.get('visemes', {}).get(k, {}), value) for k, value in visemes.items())
+        if domain == 'mouth':
+            endpoint = state(definition, 'mouth', selections['open'])['poses']
+            weights = {name: base.get(name, 0) * (1 - speech) + endpoint.get(name, 0) * speech
+                       for name in base.keys() | endpoint.keys()}
         for endpoint, amount in inputs:
             for name, weight in endpoint.items():
                 weights[name] = weights.get(name, 0) + amount * (weight - base.get(name, 0))
@@ -76,24 +81,20 @@ class LlasFacialControlsTests(unittest.TestCase):
                    dict(name='mouth/Smile', domain='mouth', pose=reset),
                    dict(name='mouth/A', domain='mouth', pose=pose)]
         definition = build_facial_expressions(document, entries, pose, pose)
-        expressions = definition['expressions']
-        self.assertEqual([e['name'] for e in expressions], ['Neutral', 'Angry'])
-        self.assertEqual(expressions[0]['selections'], {'eye': 'Open', 'mouth': 'A'})
-        self.assertEqual(expressions[1]['selections'], {'eye': 'Angry', 'mouth': 'A'})
-        neutral = evaluate(definition, expressions[0]['selections'])
+        self.assertNotIn('expressions', definition)
+        selection = definition['defaultExpression']
+        self.assertEqual(selection, {'eye': 'Open', 'closed': 'Smile', 'open': 'A'})
+        neutral = evaluate(definition, selection)
         self.assertEqual(neutral['Eye_Around exact node'],
                          {'Eye_Around.first': 0, 'Eye_Around.zero': 0})
-        for expression in expressions:
-            self.assertEqual(set(expression), {'name', 'selections'})
-            self.assertEqual(set(expression['selections']), {'eye', 'mouth'})
-        self.assertEqual(evaluate(definition, expressions[1]['selections'])['Mouth exact node'], neutral['Mouth exact node'])
+        self.assertEqual(evaluate(definition, {**selection, 'eye': 'Angry'})['Mouth exact node'], neutral['Mouth exact node'])
         self.assertEqual(state(definition, 'eye', 'Open')['controls']['blink']['eye/Open'], 0)
         self.assertNotIn('speech', state(definition, 'mouth', 'N').get('controls', {}))
         for amount in (0, .25, .63, 1):
-            actual = evaluate(definition, expressions[0]['selections'], blink=amount, speech=amount)
+            actual = evaluate(definition, selection, blink=amount, speech=amount)
             self.assertAlmostEqual(actual['Mouth exact node']['Mouth.first'], amount * .73)
             self.assertAlmostEqual(actual['Eye_Around exact node']['Eye_Around.first'], amount * .73)
-        self.assertEqual(evaluate(definition, expressions[0]['selections'], speech=1)
+        self.assertEqual(evaluate(definition, selection, speech=1)
                          ['Mouth exact node']['Mouth.first'], .73)
 
     def test_matching_source_labels_are_paired_without_cartesian_expansion(self):
@@ -109,13 +110,14 @@ class LlasFacialControlsTests(unittest.TestCase):
                    dict(name='mouth/Angry', domain='mouth', pose=copy.deepcopy(pose))]
         original = copy.deepcopy(entries)
         result = build_facial_expressions(document, entries, pose, pose)
-        self.assertEqual([entry['name'] for entry in result['expressions']], ['Neutral', 'Angry'])
-        combined = evaluate(result, result['expressions'][1]['selections'])
+        self.assertNotIn('expressions', result)
+        selection = {'eye': 'Angry', 'closed': 'Smile', 'open': 'Angry'}
+        combined = evaluate(result, selection)
         self.assertEqual(combined['Mouth exact node']['Mouth.first'], 0)
-        self.assertEqual(evaluate(result, result['expressions'][1]['selections'], speech=1)
+        self.assertEqual(evaluate(result, selection, speech=1)
                          ['Mouth exact node']['Mouth.first'], .73)
         self.assertEqual(combined['Eye_Around exact node']['Eye_Around.first'], .73)
-        independent = evaluate(result, {'eye': 'Angry', 'mouth': 'N'})
+        independent = evaluate(result, {'eye': 'Angry', 'closed': 'N', 'open': 'N'})
         self.assertEqual(independent['Mouth exact node']['Mouth.first'], 0)
         self.assertEqual(independent['Eye_Around exact node']['Eye_Around.first'], .73)
         self.assertEqual(entries, original)
@@ -123,7 +125,7 @@ class LlasFacialControlsTests(unittest.TestCase):
         for morph in entries[-1]['pose']['morphs']:
             morph['value'] = 0
         result = build_facial_expressions(document, entries, pose, pose)
-        combined = evaluate(result, result['expressions'][1]['selections'])
+        combined = evaluate(result, selection)
         self.assertEqual(combined['Mouth exact node']['Mouth.first'], 0)
         self.assertEqual(combined['Eye_Around exact node']['Eye_Around.first'], .73)
 
@@ -137,7 +139,7 @@ class LlasFacialControlsTests(unittest.TestCase):
             dict(name='mouth/N', domain='mouth', pose=pose),
             dict(name='mouth/Smile', domain='mouth', pose=pose),
             dict(name='mouth/A', domain='mouth', pose=pose)], pose, pose)
-        self.assertEqual([e['name'] for e in expressions['expressions']], ['Neutral'])
+        self.assertNotIn('expressions', expressions)
         self.assertIn('eye/WideOpen', [p['name'] for p in expressions['morphPoses']])
         self.assertEqual(state(expressions, 'eye', 'WideOpen')['poses'], {'eye/WideOpen': 1})
 
@@ -154,7 +156,7 @@ class LlasFacialControlsTests(unittest.TestCase):
                    dict(name='mouth/A', domain='mouth', pose=pose),
                    dict(name='mouth/I', domain='mouth', pose=scaled(.5))]
         definition = build_facial_expressions(document, entries, scaled(0), pose)
-        actual = evaluate(definition, {'eye': 'Open', 'mouth': 'I'}, speech=.4)
+        actual = evaluate(definition, {'eye': 'Open', 'closed': 'Smile', 'open': 'I'}, speech=.4)
         self.assertAlmostEqual(actual['Mouth exact node']['Mouth.first'], .73 * (.4 * .5 + .6 * .1))
         self.assertEqual(actual['Eye_Around exact node']['Eye_Around.first'], .73)
         for group in definition['expressionGroups']:
@@ -179,21 +181,15 @@ class LlasFacialControlsTests(unittest.TestCase):
         for label, value in [('N', .1), ('Smile', .2), ('Sad', .3), ('A', .6), ('I', .7), ('Angry', .8)]:
             for amount in (0, .25, .63, 1):
                 with self.subTest(label=label, speech=amount):
-                    actual = evaluate(definition, {'mouth': label}, speech=amount)
-                    target = .6 if label == 'Smile' else value
+                    actual = evaluate(definition, {'closed': 'Smile', 'open': label}, speech=amount)
+                    target = value
                     expected = .2 * (1 - amount) + target * amount
                     self.assertAlmostEqual(actual['Mouth exact node']['Mouth.first'], expected)
             poses = {p['name']: p['targets'] for p in definition['morphPoses']}
             self.assertEqual(poses['mouth/' + label]['Mouth exact node']['Mouth.first'], value)
-        self.assertEqual(state(definition, 'mouth', 'A')['poses'], {'mouth/Smile': 1})
-        self.assertEqual(state(definition, 'mouth', 'Smile')['controls']['speech'],
-                         {'mouth/Smile': 0, 'mouth/A': 1})
-        # Complete LLAS poses replace one another: Sad+A at full strength
-        # visibly overdeforms Rin, unlike the accepted BG additive mapping.
-        self.assertEqual(state(definition, 'mouth', 'Sad')['controls']['speech'],
-                         {'mouth/Smile': 0, 'mouth/Sad': 1})
-        self.assertEqual(state(definition, 'mouth', 'Angry')['controls']['speech'],
-                         {'mouth/Smile': 0, 'mouth/Angry': 1})
+        for label in ('A', 'Smile', 'Sad', 'Angry'):
+            self.assertEqual(state(definition, 'mouth', label)['poses'], {'mouth/' + label: 1})
+            self.assertNotIn('controls', state(definition, 'mouth', label))
 
     def test_blink_preserves_closed_expressions_and_wink_closed_side(self):
         document, pose = fixture()
@@ -224,7 +220,7 @@ class LlasFacialControlsTests(unittest.TestCase):
         entry = dict(name='eye/Angry', domain='eye', pose=pose)
         with self.assertRaisesRegex(ValueError, 'Duplicate'):
             build_facial_expressions(document, [entry, entry], pose, pose)
-        with self.assertRaisesRegex(ValueError, 'eye/Open and mouth/N, mouth/A, mouth/Smile'):
+        with self.assertRaisesRegex(ValueError, 'eye/Open and mouth/A, mouth/Smile'):
             build_facial_expressions(document, [entry], pose, pose)
 
     def test_sampled_values_zero_domain_and_order_independent_combined_precedence(self):

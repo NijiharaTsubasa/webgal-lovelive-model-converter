@@ -44,11 +44,11 @@ class IdlePoseTests(unittest.TestCase):
 
     def test_defaults_precede_expression_tables(self):
         component = order_model_component({
-            "type": "model", "name": "example", "expressions": [],
+            "type": "model", "name": "example", "expressionGroups": [],
             "idlePose": {"tracks": []}, "defaultMotion": "idle",
         })
         self.assertEqual(list(component), [
-            "type", "name", "defaultMotion", "idlePose", "expressions",
+            "type", "name", "defaultMotion", "idlePose", "expressionGroups",
         ])
 
 

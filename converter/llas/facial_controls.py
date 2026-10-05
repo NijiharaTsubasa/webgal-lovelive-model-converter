@@ -107,17 +107,10 @@ def build_facial_endpoints(gltf_document: dict, closed_pose: dict, open_pose: di
 
 def build_facial_expressions(gltf_document: dict, expressions: list,
                              closed_pose: dict, open_pose: dict) -> dict:
-    """Export all sampled poses, independent eye/mouth states and presets.
+    """Export independent Unity-sampled eye and mouth poses.
 
-    Matching source eye/mouth labels are paired as a consumer adaptation, not as
-    an assertion that the game fixes those pairs. Eye-only presets use the
-    sampled A mouth; mouth-only states remain available through the mouth group.
-    Every mouth state transitions from sampled Smile to its own sampled pose,
-    except Smile itself, which transitions to A. Complete poses are
-    replaced, not added: additive poses visibly overdeform Rin's source mouth.
     Already closed eye states stay fixed; Wink closes the other eye towards
-    sampled CloseSmile. These are consumer controls, not source-game scheduling.
-    Renderer visibility and auxiliary transforms remain outside this subset.
+    sampled CloseSmile. The default mouth endpoints are Smile and A.
     """
     if not isinstance(expressions, list):
         raise ValueError('LLAS sampled expressions must be a list')
@@ -136,8 +129,8 @@ def build_facial_expressions(gltf_document: dict, expressions: list,
             raise ValueError(f'LLAS sampled expression name must identify its domain: {name}')
         targets = _endpoint(pose, _EYE_PARTS if domain == 'eye' else _MOUTH_PARTS, parts, by_shape)
         domains[domain][name.split('/', 1)[1]] = targets
-    if 'Open' not in domains['eye'] or not {'N', 'A', 'Smile'} <= domains['mouth'].keys():
-        raise ValueError('LLAS full-face presets require sampled eye/Open and mouth/N, mouth/A, mouth/Smile')
+    if 'Open' not in domains['eye'] or not {'A', 'Smile'} <= domains['mouth'].keys():
+        raise ValueError('LLAS defaults require sampled eye/Open and mouth/A, mouth/Smile')
     endpoints = build_facial_endpoints(gltf_document, closed_pose, open_pose)
     morph_poses = [{'name': f'{domain}/{label}', 'targets': targets}
                    for domain, presets in domains.items() for label, targets in presets.items()]
@@ -162,7 +155,7 @@ def build_facial_expressions(gltf_document: dict, expressions: list,
     for domain, presets in domains.items():
         states = []
         # Match the documented defaults even when source sampling order differs.
-        neutral = 'Open' if domain == 'eye' else 'N'
+        neutral = 'Open' if domain == 'eye' else 'Smile'
         for label in [neutral, *(label for label in presets if label != neutral)]:
             base = f'{domain}/{label}'
             controls = {}
@@ -173,34 +166,10 @@ def build_facial_expressions(gltf_document: dict, expressions: list,
                         raise ValueError(f'LLAS {label} blink requires sampled {target}')
                     if pose_targets[base] != pose_targets[target]:
                         controls['blink'] = replacement(base, target)
-            else:
-                target = 'mouth/A' if label == 'Smile' else base
-                base = 'mouth/Smile'
-                if pose_targets[base] != pose_targets[target]:
-                    controls['speech'] = replacement(base, target)
             state = {'name': label, 'poses': {base: 1}}
             if controls:
                 state['controls'] = controls
             states.append(state)
-        groups.append({'name': domain, 'states': states})
-    result = []
-
-    def append(name, eye, mouth):
-        if any(entry['name'] == name for entry in result):
-            raise ValueError(f'Duplicate LLAS composed expression name: {name}')
-        result.append({'name': name, 'selections': {'eye': eye, 'mouth': mouth}})
-
-    append('Neutral', 'Open', 'A')
-    paired = set(domains['eye']).intersection(domains['mouth']) - {'Open', 'N'}
-    for label, targets in domains['eye'].items():
-        if label == 'Open':
-            continue
-        if label in paired:
-            append(label, label, label)
-            continue
-        # A source preset with no Morph effect must not acquire an invented
-        # effect from its label (e.g. a visibility-only special face).
-        if any(value != 0 for weights in targets.values() for value in weights.values()):
-            append(label, label, 'A')
+        groups.append({'name': domain, 'type': domain, 'states': states})
     return {'morphPoses': morph_poses, 'expressionGroups': groups,
-            'expressions': result, 'defaultExpression': 'Neutral'}
+            'defaultExpression': {'eye': 'Open', 'closed': 'Smile', 'open': 'A'}}

@@ -150,7 +150,7 @@ def convert_model(source: Path, output_root: Path, baked_root: Path, description
     if graft:
         append_face(exported, skeleton, game_object_transform(root.read()),
                     face_source.head_all, face_source.face_root, face_source.head_material)
-    face_definition = {'morphPoses': [], 'expressionGroups': [], 'expressions': []}
+    face_definition = {'morphPoses': [], 'expressionGroups': []}
     if board:
         face_definition = append_board_controls(exported.builder, board)
     if graft:

@@ -399,9 +399,9 @@ class BangDreamManifestTests(unittest.TestCase):
                 {"name": "eyes.Close", "targets": {"face_Base_obj": {"face_main_eye_close_L": 1.0}}},
                 {"name": "mouth.A", "targets": {"face_Base_obj": {"face_main_mouth_open_a": 1.0}}},
             ],
-            "expressionGroups": [{"name": "face", "states": [{"name": "Neutral", "poses": {},
-                                   "controls": {"blink": {"eyes.Close": 1}, "speech": {"mouth.A": 1}}}]}],
-            "expressions": [{"name": "Neutral", "selections": {"face": "Neutral"}}],
+            "expressionGroups": [{"name": "face", "type": "eye", "states": [{"name": "Neutral", "poses": {},
+                                   "controls": {"blink": {"eyes.Close": 1}}}]}],
+            "defaultExpression": {"eye": "Neutral"},
         }
 
         actual_expressions = bangdream.bind_expression_nodes(
@@ -417,7 +417,7 @@ class BangDreamManifestTests(unittest.TestCase):
             {"face_Base_obj Renderer": {"face_main_mouth_open_a": 1.0}},
         )
         self.assertEqual(actual_expressions["expressionGroups"], expressions["expressionGroups"])
-        self.assertEqual(actual_expressions["expressions"], expressions["expressions"])
+        self.assertEqual(actual_expressions["defaultExpression"], expressions["defaultExpression"])
         self.assertIn("face_Base_obj", expressions["morphPoses"][0]["targets"])
 
     def test_rejects_ambiguous_exported_expression_targets(self):
@@ -433,7 +433,7 @@ class BangDreamManifestTests(unittest.TestCase):
         targets = {"morphPoses": [{
             "name": "Neutral",
             "targets": {"face_Base_obj": {"mouth_a": 0.0}},
-        }], "expressionGroups": [], "expressions": []}
+        }], "expressionGroups": []}
         with self.assertRaisesRegex(RuntimeError, "repeats morph node name"):
             bangdream.bind_expression_nodes(
                 targets, exported(["mouth_a"], ["face Renderer", "face Renderer"])
@@ -485,8 +485,8 @@ class BangDreamManifestTests(unittest.TestCase):
         )
         head_component = build_component_config(
             head,
-            {"morphPoses": [], "expressionGroups": [],
-             "expressions": [{"name": "Neutral", "selections": {}}], "defaultExpression": "Neutral"},
+            {"morphPoses": [], "expressionGroups": [{"name": "eye", "type": "eye",
+             "states": [{"name": "Neutral", "poses": {}}]}], "defaultExpression": {"eye": "Neutral"}},
             "head.glb",
             human_scale=0.901234,
         )
@@ -507,7 +507,7 @@ class BangDreamManifestTests(unittest.TestCase):
         self.assertTrue(all(item["motionGroup"] == "garupa" for item in manifest["components"]))
         self.assertEqual(head_component["humanoidScale"], 0.901234)
         self.assertEqual(body_component["humanoidScale"], 0.923456)
-        self.assertEqual(head_component["defaultExpression"], "Neutral")
+        self.assertEqual(head_component["defaultExpression"], {"eye": "Neutral"})
         self.assertEqual(head_component["morphPoses"], [])
         for field in ("morphPoses", "expressionGroups", "expressions", "defaultExpression"):
             self.assertNotIn(field, body_component)
@@ -522,7 +522,7 @@ class BangDreamManifestTests(unittest.TestCase):
             "parameters": {"profile": {"height": 1.55}},
         }]
         component = build_component_config(
-            head, {"morphPoses": [], "expressionGroups": [], "expressions": []},
+            head, {"morphPoses": [], "expressionGroups": []},
             "head.glb", human_scale=1.0, behaviors=behaviors
         )
         self.assertEqual(component["behaviors"], behaviors)
@@ -640,7 +640,6 @@ class BangDreamManifestTests(unittest.TestCase):
                 "humanoidScale": 1.0,
                 "morphPoses": [],
                 "expressionGroups": [],
-                "expressions": [],
             }
 
             def fake_convert_one(entry, destination, baked, occupied, expected_role):

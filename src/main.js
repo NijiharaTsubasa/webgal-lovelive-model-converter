@@ -18,7 +18,6 @@ const bodySelect = document.querySelector("#body");
 const headRow = document.querySelector("#head-row");
 const bodyRow = document.querySelector("#body-row");
 const characterRow = document.querySelector("#character-row");
-const expressionSelect = document.querySelector("#expression");
 const eyeOpenInput = document.querySelector("#eye-open");
 const eyeOpenValue = document.querySelector("#eye-open-value");
 const mouthOpenInput = document.querySelector("#mouth-open");
@@ -142,16 +141,22 @@ function syncExpressionControls() {
   const groups = document.querySelector("#expression-groups");
   groups.hidden = external;
   groups.replaceChildren();
-  for (const group of character.faceDefinition?.expressionGroups ?? []) {
+  const definitions = character.faceDefinition?.expressionGroups ?? [];
+  const selection = { ...capabilities?.selections };
+  for (const [key, type, title] of [["eye", "eye", "3D眼型"], ["closed", "mouth", "3D闭口"], ["open", "mouth", "3D张口"]]) {
+    const group = definitions.find(group => group.type === type);
+    if (!group) continue;
     const label = document.createElement("label");
-    label.textContent = group.name;
+    label.textContent = title;
     const select = document.createElement("select");
     for (const state of group.states) select.add(new Option(state.name, state.name));
-    select.value = capabilities.selections[group.name];
-    select.addEventListener("change", () => {
-      character.setExpressionGroup(group.name, select.value);
-      expressionSelect.value = "";
-      syncExpressionControls();
+    select.value = selection[key];
+    onSelectIncludingRepeat(select, (value) => {
+      selection[key] = value;
+      if (key === "open" || !definitions.some(group => group.type === "mouth")) {
+        character.setExpression(selection);
+        syncExpressionControls();
+      }
     });
     label.append(select);
     groups.append(label);
@@ -160,12 +165,9 @@ function syncExpressionControls() {
 
 function showLoadedModel(entries, result, preserveView = false) {
   if (!result) return;
-  expressionSelect.replaceChildren(new Option("默认表情", ""));
-  fillSelect(expressionSelect, result.faceDefinition.expressions, (item) => [item.name, item.name]);
-  expressionSelect.value = character.expressionName;
   syncExpressionControls();
   document.querySelector("#mesh-count").textContent = result.meshes;
-  document.querySelector("#expression-count").textContent = result.faceDefinition.expressions.length;
+  document.querySelector("#expression-count").textContent = result.faceDefinition.expressionGroups.reduce((sum, group) => sum + group.states.length, 0);
   document.querySelector("#bone-count").textContent = result.bones;
   if (!preserveView) resetCamera();
   const behaviorNote = result.behaviorDiagnostics ? ` · Behavior 降级 ${result.behaviorDiagnostics}` : "";
@@ -290,7 +292,6 @@ async function applyPackageMode() {
   characterSelect.replaceChildren();
   headSelect.replaceChildren();
   bodySelect.replaceChildren();
-  expressionSelect.replaceChildren(new Option("默认表情", ""));
   if (composed) {
     const heads = allComponents.filter((entry) => entry.component.role === "head");
     fillSelect(headSelect, heads, (item) => [item.key, resourceOptionLabel(item)]);
@@ -375,9 +376,6 @@ headSelect.addEventListener("change", () => {
 });
 bodySelect.addEventListener("change", () => loadComposition(headSelect.value, bodySelect.value).catch(showError));
 packageModeSelect.addEventListener("change", () => applyPackageMode().catch(showError));
-expressionSelect.addEventListener("change", () => {
-  if (character.setExpression(expressionSelect.value)) syncExpressionControls();
-});
 eyeOpenInput.addEventListener("input", () => {
   const value = Number(eyeOpenInput.value);
   eyeOpenValue.value = value.toFixed(2);

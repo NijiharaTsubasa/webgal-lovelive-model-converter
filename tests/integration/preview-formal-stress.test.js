@@ -99,8 +99,17 @@ test("Chrome loads one preview catalog, fetches only selected manifests, and sur
       await page.selectOption('#character', { index: index % await page.locator('#character option').count() });
     }
     await page.locator("#parameterized-rendering-toggle").click();
-    await page.locator("#eye-open").fill(String(index / 5));
-    await page.locator("#mouth-open").fill(String((5 - index) / 5));
+    // Capabilities can change while a model loads; check and dispatch atomically.
+    // Static faces legitimately disable these controls.
+    await page.evaluate(({ eye, mouth }) => {
+      for (const [id, value] of [["eye-open", eye], ["mouth-open", mouth]]) {
+        const input = document.getElementById(id);
+        if (!input.disabled) {
+          input.value = String(value);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      }
+    }, { eye: index / 5, mouth: (5 - index) / 5 });
   }
   if (await page.locator('#motion option').count() > 1) await page.selectOption('#motion', { index: 1 });
   if (integrated) await page.selectOption('#package-mode', 'integrated');

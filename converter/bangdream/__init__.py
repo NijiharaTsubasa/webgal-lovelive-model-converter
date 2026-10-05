@@ -246,7 +246,7 @@ def extract_head_expression(
     The discrete controls are consumer adaptations. In particular, the raw
     weighted-sum API does not reproduce source OverrideBlink scheduling.
     """
-    result: dict[str, Any] = {"morphPoses": [], "expressionGroups": [], "expressions": []}
+    result: dict[str, Any] = {"morphPoses": [], "expressionGroups": []}
     if bundle.kind != "head":
         return result
     if bundle.face_controller is None:
@@ -315,35 +315,26 @@ def extract_head_expression(
                         add_pose(blink_name, indices)
                     state["controls"] = {"blink": {blink_name: 1}}
             face_states.append(state)
-            result["expressions"].append({"name": state_name,
-                                          "selections": {"face": state_name, "mouth": name}})
-
-        named_mouth = layer_poses["mouth"].get(name)
-        if named_mouth is not None and not recipes[named_mouth]:
-            named_mouth = None
-        # Consumer speech adaptation, not source-game scheduling: Sad/Serious
-        # retain their user-reviewed base while adding A. Smile/Kime fade the
-        # teeth pose towards A instead of stacking both at full strength.
-        retain = name in {"Sad", "Serious", "Smile", "Kime"}
-        if retain and (named_mouth is None or "a" not in visemes):
-            raise ValueError(f"{name} speech requires source {name} and A Morph recipes")
-        mouth_state: dict[str, Any] = {"name": name, "poses": {named_mouth: 1} if retain else {}}
-        controls: dict[str, Any] = {}
-        if visemes:
-            controls["visemes"] = deepcopy(visemes)
-        speech = visemes.get("a") if retain or named_mouth is None else {named_mouth: 1}
-        if name in {"Smile", "Kime"}:
-            speech = {named_mouth: 0, **visemes["a"]}
-        if speech:
-            controls["speech"] = deepcopy(speech)
-        if controls:
-            mouth_state["controls"] = controls
-        mouth_states.append(mouth_state)
-
+    for name, pose in layer_poses["mouth"].items():
+        mouth_states.append({"name": name, "poses": {pose: 1},
+                             **({"controls": {"visemes": deepcopy(visemes)}} if visemes else {})})
+    # Zero source Lipsync input is a real mouth pose and the default closure.
+    if mouth_states and not any(not recipes[pose] for pose in layer_poses["mouth"].values()):
+        empty_name = "Neutral"
+        while empty_name in layer_poses["mouth"]:
+            empty_name += "_"
+        mouth_states.insert(0, {"name": empty_name, "poses": {}})
     if face_states:
-        result["expressionGroups"] = [{"name": "face", "states": face_states},
-                                      {"name": "mouth", "states": mouth_states}]
-        result["defaultExpression"] = result["expressions"][0]["name"]
+        result["expressionGroups"].append({"name": "face", "type": "eye", "states": face_states})
+    if mouth_states:
+        result["expressionGroups"].append({"name": "mouth", "type": "mouth", "states": mouth_states})
+    default = {"eye": face_states[0]["name"]} if face_states else {}
+    if mouth_states:
+        closed = next(state["name"] for state in mouth_states
+                      if not state["poses"] or all(not recipes[p] for p in state["poses"]))
+        default.update(closed=closed, open="A" if "A" in layer_poses["mouth"] else closed)
+    if default:
+        result["defaultExpression"] = default
     return result
 
 
@@ -1201,7 +1192,7 @@ def convert_one(
             exported_mesh_morphs=exported_mesh_morph_names(exported),
         )
     else:
-        expressions = {"morphPoses": [], "expressionGroups": [], "expressions": []}
+        expressions = {"morphPoses": [], "expressionGroups": []}
     if bundle.kind == "head":
         expressions = bind_expression_nodes(
             expressions,
@@ -1349,7 +1340,7 @@ def convert_all(
         package_components = components_by_name.setdefault(package_name, {})
         package_components[role] = component
         print(f"[bangdream] {entry.name} -> {package_name}/{component['model']} "
-              f"({len(component.get('expressions', []))} expressions)")
+              f"({sum(len(g['states']) for g in component.get('expressionGroups', []))} facial states)")
 
     role_order = {"head": 0, "body": 1}
     configs: list[dict[str, Any]] = []

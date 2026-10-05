@@ -33,6 +33,37 @@ def evaluate(package, state, control=None, amount=0):
 
 
 class HasunosoraExpressionTests(unittest.TestCase):
+    def test_wink_host_blink_changes_only_open_source_eyelid_channels(self):
+        model = SimpleNamespace(builder=SimpleNamespace(document={"nodes": [{"name": "Face"}, {"name": "Brow"}]}))
+        for family in ('Close', 'SmileB'):
+            for closed, opened in [('L', 'R'), ('R', 'L')]:
+                closed_key = (0, 0, 'Face_.Eyelids_' + family + '_' + closed)
+                open_key = (0, 1, 'Face_.Eyelids_' + family + '_' + opened)
+                brow_key = (1, 0, 'Eyebrow_Down')
+                source = {closed_key: 1, open_key: .08, brow_key: .6}
+                entry = ExportedExpression('arbitrary', 'source', None, [])
+                with patch('converter.hasunosora._clip_pose', return_value=source):
+                    package = build_expression_package(model, [entry])
+                selected = package['expressionGroups'][0]['states'][0]
+                for amount in (0, .25, .5, .75, 1):
+                    actual = evaluate(package, selected, 'blink', amount)
+                    self.assertEqual(actual['Face', closed_key[2]], 1)
+                    self.assertAlmostEqual(actual['Face', open_key[2]], .08 + .92 * amount)
+                    self.assertEqual(actual['Brow', 'Eyebrow_Down'], .6)
+                self.assertEqual(source[open_key], .08)
+                source[open_key] = 1
+                with patch('converter.hasunosora._clip_pose', return_value=source):
+                    package = build_expression_package(model, [entry])
+                self.assertNotIn('controls', package['expressionGroups'][0]['states'][0])
+
+    def test_two_closed_sides_with_different_source_shapes_stay_fixed(self):
+        model = SimpleNamespace(builder=SimpleNamespace(document={"nodes": [{"name": "Face"}]}))
+        source = {(0, 0, 'Face_.Eyelids_Close_L'): 1, (0, 1, 'Face_.Eyelids_Close_R'): 0,
+                  (0, 2, 'Face_.Eyelids_SmileB_L'): 0, (0, 3, 'Face_.Eyelids_SmileB_R'): 1}
+        with patch('converter.hasunosora._clip_pose', return_value=source):
+            package = build_expression_package(model, [ExportedExpression('mixed-closure', 'source', None, [])])
+        self.assertNotIn('controls', package['expressionGroups'][0]['states'][0])
+
     def test_static_source_mouth_is_independent_without_fabricated_speech_control(self):
         model = SimpleNamespace(builder=SimpleNamespace(document={"nodes": [{"name": "Face"}]}))
         face_key = (0, 0, "eye")
@@ -81,7 +112,7 @@ class HasunosoraExpressionTests(unittest.TestCase):
                 self.assertEqual(component["name"], "3d_b")
                 self.assertEqual(component["morphPoses"], [])
                 self.assertEqual(component["expressionGroups"], [])
-                self.assertEqual(component["expressions"], [])
+                self.assertNotIn("expressions", component)
                 with self.assertRaisesRegex(ValueError, "requested models not found"):
                     convert(source, output, None, False, model_names=["absent"], models_only=True)
 
@@ -105,15 +136,17 @@ class HasunosoraExpressionTests(unittest.TestCase):
                          {("Face", "arbitraryA"): 1, ("Face", "arbitraryB"): 0})
         self.assertEqual(evaluate(package, face["happy"], "blink", 1),
                          {("Face", "arbitraryA"): 0, ("Face", "arbitraryB"): 1})
-        self.assertEqual(evaluate(package, mouth["happy"], "speech", 1),
+        self.assertEqual(evaluate(package, mouth["happy/a"]),
                          {("Face", "lip0"): 0, ("Face", "lip1"): .1})
-        self.assertEqual(evaluate(package, mouth["happy"])["Face", "lip0"], .8)
+        self.assertEqual(evaluate(package, mouth["happy/close"])["Face", "lip0"], .8)
         self.assertNotIn("controls", face["fixed"])
-        self.assertNotIn("controls", mouth["fixed"])
-        self.assertEqual(set(mouth["happy"]["controls"]["visemes"]), set("aiueo"))
-        self.assertEqual(package["defaultExpression"], "normal")
-        self.assertEqual(package["expressions"][1], {"name": "happy", "selections": {"face": "happy", "mouth": "happy"}})
-        self.assertFalse(evaluate(package, face["happy"]).keys() & evaluate(package, mouth["normal"]).keys())
+        self.assertNotIn("fixed", mouth)
+        self.assertEqual(set(mouth["happy/a"]["controls"]["visemes"]), set("aiueo"))
+        self.assertEqual(mouth["happy/a"]["controls"]["visemes"]["i"], {"mouth.happy.i": 1})
+        self.assertEqual(package["defaultExpression"], {"eye": "normal", "closed": "normal/close", "open": "normal/a"})
+        self.assertNotIn("expressions", package)
+        self.assertEqual([g["type"] for g in package["expressionGroups"]], ["eye", "mouth"])
+        self.assertFalse(evaluate(package, face["happy"]).keys() & evaluate(package, mouth["normal/close"]).keys())
 
     def test_dynamic_morph_cannot_silently_become_zero(self):
         clip = SimpleNamespace(
