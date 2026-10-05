@@ -179,12 +179,12 @@ npm run preview:models -- --missing
 
 #### 4.3 在 Terre 中使用
 
-将生成后的模型目录复制到游戏工程的 `game/figure` 下，Terre 即可在网格视图中显示缩略图，鼠标悬停时显示预览图、模型名称和完整说明。
+将生成后的模型目录复制到游戏工程的 `game/3d/figure` 下，Terre 即可在网格视图中显示缩略图，鼠标悬停时显示预览图、模型名称和完整说明。
 
-若模型已经复制到游戏工程，也可以按模型名称同步预览图。将下面的路径替换成您游戏工程的 `figure` 目录；此命令补齐输出中缺少的预览图，并仅更新游戏模型配置的 `preview` 字段：
+若模型已经复制到游戏工程，也可以按模型名称同步预览图。将下面的路径替换成您游戏工程的 `3d/figure` 目录；此命令补齐输出中缺少的预览图，并仅更新游戏模型配置的 `preview` 字段：
 
 ```powershell
-npm run preview:models -- --missing --sync "D:\我的游戏\game\figure"
+npm run preview:models -- --missing --sync "D:\我的游戏\game\3d\figure"
 ```
 
 ### 5. 一次转换全部游戏
