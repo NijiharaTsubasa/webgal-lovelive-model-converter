@@ -40,6 +40,7 @@ test('native expression cascade commits on its last step and preserves compatibl
     model('Third', ['DifferentEye'], ['DifferentClosed', 'DifferentOpen'],
       { eye: 'DifferentEye', closed: 'DifferentClosed', open: 'DifferentOpen' }),
   ];
+  models[0].expressionGroups[0].states[1].mouth = { closed: 'Smile', open: 'A' };
   models.push({ type: 'model', name: 'FullFace', role: 'integrated', model: 'model.glb', humanoidScale: 1,
     morphPoses: [], expressionGroups: [{ name: 'faces', type: 'face', states: [
       { name: 'Normal', poses: {} }, { name: 'Happy', poses: {} },
@@ -94,6 +95,7 @@ test('native expression cascade commits on its last step and preserves compatibl
   assert.deepEqual(await selects.evaluateAll(items => items.map(item => item.value)), ['Open', 'Closed', 'A']);
   const initial = await page.evaluate(() => window.__nativeExpressionProbe());
   await selects.nth(0).selectOption('Sad');
+  assert.equal(await selects.nth(1).inputValue(), 'Smile', 'eye selection initializes its paired mouth');
   await selects.nth(1).selectOption('Smile');
   let state = await page.evaluate(() => window.__nativeExpressionProbe());
   assert.deepEqual(state.selection, initial.selection);

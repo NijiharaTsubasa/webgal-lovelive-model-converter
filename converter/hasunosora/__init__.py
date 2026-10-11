@@ -53,6 +53,7 @@ from ..common.normalized_model import (
     export_normalized_model,
 )
 from .motion import collect_baked_motions
+from .mouth_series import deduplicate_mouth_series
 from .materials import adapt_material
 from .source import discover_inputs
 from .identity import SUPPLEMENTAL_COSTUMES, load_costume_motion_groups
@@ -398,7 +399,7 @@ def build_expression_package(
         if mouth_states and "closed" not in selected:
             selected.update(closed=mouth_states[0]["name"], open=mouth_states[0]["name"])
         result["defaultExpression"] = selected
-    return result
+    return deduplicate_mouth_series(result)
 
 
 def convert(
