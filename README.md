@@ -199,6 +199,7 @@ npm run preview:models -- --missing
 
 若模型已经复制到游戏工程，也可以按模型名称同步预览图。将下面的路径替换成您游戏工程的 `game/3d/figure` 目录；此命令补齐输出中缺少的预览图，并仅更新游戏模型配置的 `preview` 字段：
 
+
 ```powershell
 npm run preview:models -- --missing --sync "D:\我的游戏\game\3d\figure"
 ```
