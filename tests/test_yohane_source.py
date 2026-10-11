@@ -64,6 +64,33 @@ class YohaneSourceTests(unittest.TestCase):
             self.assertEqual(result[0].controller_name, controller)
             self.assertEqual(set(result[0].bundle_paths), {model, story})
 
+    def test_enemy_character_uses_its_own_story_controller(self):
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            model, story = directory / 'model.bundle', directory / 'story.bundle'
+            model.touch()
+            story.touch()
+            prefab = 'EN_yohane_greatmaster01'
+            controller = prefab + '_story'
+            creature = 'EN_perapi_normal01'
+            inventory = {
+                model: BundleInfo(model, ('cab-model',), (),
+                    ((f'Assets/Enemy/{prefab}/{prefab}.prefab', 'GameObject', prefab, 1),
+                     (f'Assets/Enemy/{creature}/{creature}.prefab', 'GameObject', creature, 3)), True),
+                story: BundleInfo(story, ('cab-story',), (),
+                    ((f'Assets/Enemy/{controller}/{controller}.controller', 'AnimatorController', controller, 2),)),
+            }
+            with patch('converter.yohane.source.read_bundle', side_effect=inventory.__getitem__), \
+                 patch('converter.yohane.source.UnityPy.load'), \
+                 patch('converter.yohane.source.source_prefab'), \
+                 patch('converter.yohane.source.has_human_avatar', return_value=True), \
+                 patch('converter.yohane.source.controller_idle_clips', return_value=('idle',)):
+                result = discover_models(directory)
+            self.assertEqual(len(result), 1)
+            self.assertEqual(result[0].name, prefab)
+            self.assertEqual(result[0].controller_name, controller)
+            self.assertEqual(set(result[0].bundle_paths), {model, story})
+
 
 if __name__ == '__main__':
     unittest.main()

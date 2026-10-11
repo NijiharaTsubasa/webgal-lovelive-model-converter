@@ -108,9 +108,9 @@ def discover_models(input_dir: Path) -> list[YohaneModelSource]:
     models = {}
     for bundle in bundles:
         for asset_path, kind, name, path_id in bundle.assets:
-            if kind == 'AnimatorController' and name.startswith('CH_') and name.endswith('_story'):
+            if kind == 'AnimatorController' and name.startswith(('CH_', 'EN_')) and name.endswith('_story'):
                 controllers[name.lower()] = (name, bundle.path, asset_path)
-            if kind != 'GameObject' or not asset_path.lower().endswith('.prefab') or not name.startswith('CH_') or name.endswith('_story'):
+            if kind != 'GameObject' or not asset_path.lower().endswith('.prefab') or not name.startswith(('CH_', 'EN_')) or name.endswith('_story'):
                 continue
             if Path(asset_path).stem.lower() != name.lower():
                 continue
@@ -135,6 +135,10 @@ def discover_models(input_dir: Path) -> list[YohaneModelSource]:
         candidates = [exact] if exact else [item for key, item in sorted(controllers.items())
                                            if key.split('_')[1] == character]
         if not candidates:
+            # Enemy assets also contain creatures without a story character
+            # controller. Only story-capable humanoids are conversion inputs.
+            if name.startswith('EN_'):
+                continue
             raise FileNotFoundError(f'{name}: missing character story AnimatorController')
         # Other costumes reuse a character's story graph. Unity ignores facial
         # bindings absent from a costume, including fully masked/armored faces.
