@@ -1,5 +1,9 @@
-"""Select active Yohane geometry and export source textures as unlit materials."""
+"""Select active Yohane geometry and retain BX material draws."""
+from copy import deepcopy
+
 from converter.common.normalized_model import NormalizedModelAdapter
+from .materials import material_extras
+from converter.common.unity import object_id
 
 
 def renderer_is_active(renderer):
@@ -17,6 +21,10 @@ def renderer_is_active(renderer):
 
 
 class YohaneModelAdapter(NormalizedModelAdapter):
+    def __init__(self):
+        self.renderer_materials = []
+        self.renderer_meshes = {}
+
     def bind_builder(self, builder):
         self.builder = builder
 
@@ -29,13 +37,29 @@ class YohaneModelAdapter(NormalizedModelAdapter):
     def should_export_renderer(self, renderer):
         return renderer_is_active(renderer)
 
+    def adapt_renderer(self, renderer):
+        self.renderer_meshes[object_id(renderer)] = len(self.builder.document['meshes'])
+        self.renderer_materials.append((len(self.builder.document['meshes']),
+                                        list(renderer.m_Materials)))
+        return renderer
+
+    def finalize(self):
+        # Unity repeats the last submesh for surplus renderer material slots.
+        # Keep this game-local, without changing shared skin or mesh emission.
+        for mesh_index, materials in self.renderer_materials:
+            primitives = self.builder.document['meshes'][mesh_index]['primitives']
+            count = len(primitives)
+            if not count:
+                raise ValueError('Yohane renderer has no submeshes')
+            for pointer in materials[count:]:
+                primitive = deepcopy(primitives[count - 1])
+                primitive['material'] = self.builder.add_material(pointer)
+                primitives.append(primitive)
+
     def adapt_material(self, material, result):
         texture = dict(material.m_SavedProperties.m_TexEnvs).get('_BaseMap')
         if texture and texture.m_Texture:
             result['pbrMetallicRoughness']['baseColorTexture'] = {
                 'index': self.builder.add_image(texture.m_Texture.read())}
         result['pbrMetallicRoughness']['baseColorFactor'] = [1, 1, 1, 1]
-        result.setdefault('extensions', {})['KHR_materials_unlit'] = {}
-        used = self.builder.document.setdefault('extensionsUsed', [])
-        if 'KHR_materials_unlit' not in used:
-            used.append('KHR_materials_unlit')
+        result['extras'] = material_extras(material, self.builder)

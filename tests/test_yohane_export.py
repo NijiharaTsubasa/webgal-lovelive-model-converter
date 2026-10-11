@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
-from converter.yohane import convert, model_description, prepare_prefab
+from converter.yohane import convert, prepare_prefab
 from converter.yohane.face import export_face
 from converter.yohane.model_adapter import YohaneModelAdapter, renderer_is_active
 from converter.yohane.motion import default_action, export_motions
@@ -91,12 +91,15 @@ class YohaneExportTests(unittest.TestCase):
                     patch('converter.yohane.find_prefab'), patch('converter.yohane.prepare_prefab'), \
                     patch('converter.yohane.export_normalized_model', return_value=exported), \
                     patch('converter.yohane.export_face', return_value={}), \
+                    patch('converter.yohane.export_aura_arc'), \
                     patch('converter.yohane.default_action', return_value=('ch_idle_01', 'ch_idle_01')), \
                     patch('converter.yohane.extract_physics', return_value=None), \
                     patch('converter.yohane.export_motions') as motions:
                 convert(root / 'input', root / 'output', root / 'baked', models_only=True)
             motions.assert_not_called()
             self.assertTrue((root / 'output' / 'yohane' / source.name / 'config.json').is_file())
+            config = json.loads((root / 'output' / 'yohane' / source.name / 'config.json').read_text(encoding='utf-8'))
+            self.assertEqual(config['components'][0]['motionGroup'], 'yohane')
 
     def test_motions_only_uses_one_bake_for_shared_controller(self):
         controller, body, _ = body_fixture()
@@ -157,17 +160,68 @@ class YohaneExportTests(unittest.TestCase):
         texture = NS(m_Texture=NS(read=lambda: object()))
         material = NS(m_SavedProperties=NS(m_TexEnvs=[('_BaseMap', texture)]))
         result = {'pbrMetallicRoughness': {}}
-        adapter.adapt_material(material, result)
+        with patch('converter.yohane.model_adapter.material_extras', return_value={'shader': 'yohane-toon'}):
+            adapter.adapt_material(material, result)
         self.assertEqual(result['pbrMetallicRoughness']['baseColorTexture'], {'index': 3})
-        self.assertEqual(builder.document['extensionsUsed'], ['KHR_materials_unlit'])
+        self.assertEqual(result['extras']['shader'], 'yohane-toon')
+
+    def test_surplus_material_draw_reuses_last_submesh_and_morphs(self):
+        primitive = {'indices': 4, 'attributes': {'POSITION': 2}, 'material': 0,
+                     'targets': [{'POSITION': 8}]}
+        builder = NS(document={'meshes': [{'primitives': [primitive]}]},
+                     add_material=lambda pointer: pointer)
+        adapter = YohaneModelAdapter()
+        adapter.bind_builder(builder)
+        adapter.renderer_materials = [(0, [0, 5, 7])]
+        adapter.finalize()
+        draws = builder.document['meshes'][0]['primitives']
+        self.assertEqual([draw['material'] for draw in draws], [0, 5, 7])
+        self.assertEqual(draws[1]['targets'], primitive['targets'])
+        self.assertEqual(draws[1]['indices'], primitive['indices'])
+        self.assertIsNot(draws[1], primitive)
+
+    def test_conversion_preserves_cloth_when_surplus_material_repeats_its_submesh(self):
+        identity = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.]
+        mapping = NormalizedNodeMapping({}, [identity], [identity], [identity], {})
+        primitive = {'attributes': {'POSITION': 0}, 'indices': 1, 'material': 0}
+        document = {'nodes': [{'name': renderer_node_name('skirt'), 'mesh': 0}],
+                    'meshes': [{'name': 'skirt', 'primitives': [primitive]}], 'accessors': [{'count': 3}]}
+        builder = NS(document=document, add_material=lambda pointer: pointer,
+                     write=lambda destination: destination.write_bytes(b'glb'))
+        exported = NS(builder=builder, node_mapping=mapping, human_scale=1)
+        region = {'mesh': NS(m_Name='skirt'), 'fixed': [0], 'influences': [[], [], []],
+                  'component': NS(clothParams=NS(useCollision=False)),
+                  'renderComponent': NS(m_GameObject=NS(read=lambda: object()))}
+        def emit(environment, pointer, skeleton, adapter):
+            adapter.bind_builder(builder)
+            adapter.renderer_materials = [(0, [0, 5])]
+            return exported
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = NS(name='CH_yohane_normal01', controller_name='CH_yohane_normal01_story')
+            baked = root / 'baked' / 'yohane' / source.name
+            baked.mkdir(parents=True)
+            for name in ('skeleton.json', 'face_samples.json'):
+                (baked / name).write_text('{}', encoding='utf-8')
+            with patch('converter.yohane.discover_models', return_value=[source]), \
+                    patch('converter.yohane.load_environment'), patch('converter.yohane.find_controller'), \
+                    patch('converter.yohane.find_prefab'), patch('converter.yohane.prepare_prefab'), \
+                    patch('converter.yohane.export_normalized_model', side_effect=emit), \
+                    patch('converter.yohane.export_face', return_value={}), \
+                    patch('converter.yohane.default_action', return_value=('idle', 'idle')), \
+                    patch('converter.yohane.physics.extract_model_physics', return_value=None), \
+                    patch('converter.yohane.physics.mesh_cloth_regions', return_value=[region]), \
+                    patch('converter.yohane.export_aura_arc'), \
+                    patch('converter.yohane.physics.object_id', side_effect=id), \
+                    patch.object(NormalizedNodeMapping, 'radius', return_value=.003), \
+                    patch('converter.yohane.physics.game_object_transform', return_value=object()):
+                convert(root / 'input', root / 'output', root / 'baked', models_only=True)
+            config = json.loads((root / 'output' / 'yohane' / source.name / 'config.json').read_text(encoding='utf-8'))
+            self.assertEqual([cloth['primitive'] for cloth in config['components'][0]['physics']['cloths']], [0])
+            self.assertEqual([draw['material'] for draw in document['meshes'][0]['primitives']], [0, 5])
 
     def test_inactive_static_accessories_are_omitted(self):
         self.assertFalse(renderer_is_active(NS(m_Enabled=False)))
-
-    def test_description_only_uses_known_source_names(self):
-        self.assertEqual(model_description('CH_ruby_fairy01'), '露比 妖精服')
-        self.assertEqual(model_description('CH_ruby_fairy01_inv'), '露比 妖精服')
-        self.assertEqual(model_description('CH_unknown_normal01'), '')
 
     def test_default_action_is_controller_default_not_a_clip_name_guess(self):
         controller, _, _ = body_fixture()

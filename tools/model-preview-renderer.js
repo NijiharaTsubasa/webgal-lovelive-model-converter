@@ -11,11 +11,12 @@ export async function initialize() {
   light.position.set(3, 5, 4);
   scene.add(light);
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .01, 20);
-  const character = new CharacterRenderer({ renderer, scene, camera });
+  const character = new CharacterRenderer({ renderer, scene, camera,
+    fetchResource: globalThis.fetch.bind(globalThis) });
   character.setPhysicsEnabled(false);
   const shaderErrors = [];
   renderer.debug.onShaderError = (gl, program) => shaderErrors.push(gl.getProgramInfoLog(program));
-  for (const name of ['hasunosora_runtime', 'garupa_runtime', 'llas_runtime']) {
+  for (const name of ['hasunosora_runtime', 'garupa_runtime', 'llas_runtime', 'yohane_runtime']) {
     const url = `/packages/runtime/${name}/config.json`;
     const response = await fetch(url);
     if (response.status === 404) continue;
@@ -58,6 +59,8 @@ export async function initialize() {
       camera.position.set(headPosition.x, (top + bottom) / 2, headPosition.z + 4);
       camera.lookAt(headPosition.x, (top + bottom) / 2, headPosition.z);
       camera.updateProjectionMatrix();
+      character.prepareFrame();
+      await character.prepareRenderResources();
       character.render();
       // Work around Hasunosora GrabPass execution order: capture the second frame
       // so the eyes use the populated grab texture instead of the dark first frame.

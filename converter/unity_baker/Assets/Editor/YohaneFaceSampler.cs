@@ -75,8 +75,17 @@ public static class YohaneFaceSampler
             }
             var isolated = new List<Pose>();
             foreach (var clip in controller.animationClips.Where(clip => clip.name.StartsWith("f_", StringComparison.Ordinal)).Distinct())
-            foreach (var time in times)
             {
+                // Eye clips include a waiting interval before blinking (Yohane's
+                // first closure is after two seconds). Inspect their full source
+                // period, not just the constant Face Layer sample times above.
+                var eyeControl = clip.name == "f_eye_close" || clip.name == "f_eye_close_over";
+                var clipTimes = eyeControl
+                    ? Enumerable.Range(0, Mathf.CeilToInt(clip.length * clip.frameRate) + 1)
+                        .Select(frame => Mathf.Min(frame / clip.frameRate, clip.length))
+                    : times.AsEnumerable();
+                Pose peakSample = null;
+                var peakWeight = float.NegativeInfinity;
                 animator.Rebind();
                 foreach (var renderer in renderers)
                     for (var i = 0; i < renderer.sharedMesh.blendShapeCount; i++) renderer.SetBlendShapeWeight(i, 0);
@@ -90,9 +99,19 @@ public static class YohaneFaceSampler
                     var outputPlayable = AnimationPlayableOutput.Create(graph, "FaceClip", animator);
                     outputPlayable.SetSourcePlayable(playable);
                     graph.Play();
-                    playable.SetTime(time);
-                    graph.Evaluate(0);
-                    isolated.Add(new Pose { face = clip.name, eye = "", mouth = "", time = time, meshes = Capture() });
+                    foreach (var time in clipTimes)
+                    {
+                        playable.SetTime(time);
+                        graph.Evaluate(0);
+                        var sample = new Pose { face = clip.name, eye = "", mouth = "", time = time, meshes = Capture() };
+                        if (!eyeControl) { isolated.Add(sample); continue; }
+                        var weight = sample.meshes.SelectMany(mesh => mesh.targets.Select((target, index) =>
+                            target == "eye_close" ? mesh.weights[index] : 0f)).DefaultIfEmpty(0).Max();
+                        // Keep the actual peak pose/time, not hundreds of repeated
+                        // waiting frames. Export uses the endpoint, not clip timing.
+                        if (weight > peakWeight) { peakWeight = weight; peakSample = sample; }
+                    }
+                    if (peakSample != null) isolated.Add(peakSample);
                 }
                 finally { graph.Destroy(); }
             }

@@ -13,24 +13,17 @@ from ..common.motion_binary import encode_motion
 from ..common.normalized_model import export_normalized_model
 from ..common.unity import game_object_transform, safe_name
 from .face import export_face
+from .aura import export_aura_arc
 from .model_adapter import YohaneModelAdapter
+from .metadata import model_descriptions
 from .motion import default_action, export_motions
+from .motion_dedup import deduplicate_motions, resolve_default_motion
 from .physics import extract_physics
 from .source import discover_models, load_environment
 
 
 CHARACTERS = {'yohane': '夜羽', 'ruby': '露比', 'chika': '千歌', 'you': '曜',
               'riko': '梨子', 'hanamaru': '花丸', 'dia': '黛雅', 'kanan': '果南', 'mari': '鞠莉'}
-COSTUMES = {'normal01': '默认服装', 'fairy01': '妖精服'}
-
-
-def model_description(name: str) -> str:
-    parts = name.split('_')
-    if len(parts) < 3 or parts[1] not in CHARACTERS:
-        return ''
-    return ' '.join(part for part in (CHARACTERS[parts[1]], COSTUMES.get(parts[2], '')) if part)
-
-
 def find_prefab(environment, source):
     pointers = []
     for obj in environment.objects:
@@ -88,6 +81,7 @@ def convert(input_dir: Path, output_dir: Path, baked_dir: Path, clean: bool = Fa
         if missing:
             raise ValueError(f'Yohane requested models not found: {sorted(missing)}')
         sources = [source for source in sources if source.name in requested]
+    descriptions = model_descriptions(input_dir) if not motions_only else {}
     game_dir, motion_dir = output_dir / 'yohane', output_dir / 'motion' / 'yohane'
     if clean:
         for directory in ([game_dir] if models_only else [motion_dir] if motions_only else [game_dir, motion_dir]):
@@ -135,25 +129,36 @@ def convert(input_dir: Path, output_dir: Path, baked_dir: Path, clean: bool = Fa
             raise FileNotFoundError(f'{source.name}: missing Unity face bake {face_file}')
         pointer = find_prefab(environment, source)
         prepare_prefab(pointer, source.name)
-        exported = export_normalized_model(environment, pointer, skeleton, YohaneModelAdapter())
-        component = {'type': 'model', 'name': source.name, 'description': model_description(source.name),
-                     'group': 'yohane', 'role': 'integrated', 'model': 'model.glb',
-                     'humanoidScale': exported.human_scale}
+        adapter = YohaneModelAdapter()
+        exported = export_normalized_model(environment, pointer, skeleton, adapter)
+        component = {'type': 'model', 'name': source.name, 'description': descriptions.get(source.name, ''),
+                     'group': 'yohane', 'role': 'integrated', 'model': 'model.glb', 'motionGroup': 'yohane',
+                     'humanoidScale': exported.human_scale, 'renderProfile': 'yohane-character'}
         idle_motion, idle_clip = default_action(controller)
         idle = [clip['name'] for clip in body.get('clips', [])
                 if clip['name'] == idle_clip] if body else []
         if len(idle) == 1:
             component['defaultMotion'] = f'yohane/{source.controller_name}/{safe_name(idle_motion)}'
+            if models_only and body_file.name == 'body_baked.json':
+                payload = export_motions(controller, body, character)[idle_motion]
+                component['defaultMotion'] = resolve_default_motion(
+                    output_dir, source.controller_name, safe_name(idle_motion), payload)
             component['idlePose'] = sample_baked_pose(body_file, idle_clip, 0)
         component.update(export_face(face_file, controller, exported.builder.document))
         physics = extract_physics(environment, exported)
         if physics:
             component['physics'] = physics
+        # Extract cloth from source submeshes before surplus material draws repeat them.
+        adapter.finalize()
+        export_aura_arc(pointer, exported, adapter.renderer_meshes)
         destination = game_dir / source.name
         destination.mkdir(parents=True, exist_ok=True)
         exported.builder.write(destination / 'model.glb')
         (destination / 'config.json').write_text(json.dumps(
             {'components': [order_model_component(component)]}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    if not models_only:
+        replacements = deduplicate_motions(output_dir)
+        print(f'[yohane:motion] removed {len(replacements)} duplicate actions', flush=True)
     if not motions_only:
         configs = sorted(f'{directory.name}/config.json' for directory in game_dir.iterdir()
                          if directory.is_dir() and (directory / 'config.json').is_file())

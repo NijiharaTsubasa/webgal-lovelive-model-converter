@@ -72,6 +72,7 @@ let allComponents = [];
 const fullModelManifests = new Map();
 let modelSelectionRequest = 0;
 let selectedModelEntries = [];
+let preparedModelRoot = null;
 
 async function resolveModelEntry(entry) {
   let promise = fullModelManifests.get(entry.configPath);
@@ -196,17 +197,29 @@ function showLoadedModel(entries, result, preserveView = false) {
 async function loadEntries(entries, { preserveView = false } = {}) {
   selectedModelEntries = entries;
   const request = ++modelSelectionRequest;
+  preparedModelRoot = null;
   status.textContent = `正在加载 ${entries.map((entry) => entry.name).join(" + ")}`;
   stopMotionButton.disabled = true;
   const resolved = await Promise.all(entries.map(resolveModelEntry));
   if (request !== modelSelectionRequest) return;
   character.meshClothEnabled = meshClothToggle.checked;
   const result = await character.load(resolved, packagesRoot);
-  if (!result) return;
+  if (!result || request !== modelSelectionRequest || character.root !== result.root) return;
   showLoadedModel(entries, result, preserveView);
   await applyFaceSource();
-  if (character.root !== result.root) return;
+  if (request !== modelSelectionRequest || character.root !== result.root) return;
   await describeMotion(motionSelect.value);
+  if (request !== modelSelectionRequest || character.root !== result.root) return;
+  character.prepareFrame();
+  try {
+    await character.prepareRenderResources();
+  } catch (error) {
+    if (request !== modelSelectionRequest || character.root !== result.root) return;
+    character.clear();
+    throw error;
+  }
+  if (request !== modelSelectionRequest || character.root !== result.root) return;
+  preparedModelRoot = result.root;
 }
 
 async function prepareParameters() {
@@ -341,12 +354,12 @@ async function boot() {
   if (parameterInput.components.length) {
     manifests.push({ configPath: 'parameter-input/config.json', config: parameterInput });
   }
-  for (const name of ['hasunosora_runtime', 'garupa_runtime', 'llas_runtime']) {
+  for (const name of ['hasunosora_runtime', 'garupa_runtime', 'llas_runtime', 'yohane_runtime']) {
     const configPath = `runtime/${name}/config.json`;
     manifests.push({ configPath, config: await fetchJson(`${packagesRoot}${configPath}`) });
   }
   for (const { config, configPath } of manifests) {
-    if (config.components.some(component => ['shader', 'behavior'].includes(component.type))) {
+    if (config.components.some(component => ['shader', 'behavior', 'render-profile'].includes(component.type))) {
       character.resourcePackages.register(config, `${packagesRoot}${configPath}`);
     }
   }
@@ -434,6 +447,10 @@ renderer.setAnimationLoop((timestamp) => {
   timer.update(timestamp);
   const delta = normalizeFrameDelta(timer.getDelta());
   try {
+    controls.update();
+    // Preserve the last canvas frame until this selection's private render
+    // resources are ready; animation time must not advance while preparing.
+    if (character.root && character.root !== preparedModelRoot) return;
     const changed = character.update(delta);
     if (changed) {
       stopMotionButton.disabled = !changed.canStop;
@@ -443,7 +460,6 @@ renderer.setAnimationLoop((timestamp) => {
         ? `正在播放 ${changed.name}${groupNote}${changed.parameterMotion ? '，MTN 播放一次后保留末态。' : '，状态和循环方式来自动作程序。'}`
         : "当前为模型静止姿态，可独立切换面部表情。";
     }
-    controls.update();
     character.render();
   } catch (error) {
     showError(error);
