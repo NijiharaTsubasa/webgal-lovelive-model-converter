@@ -97,7 +97,7 @@ Humanoid 肌肉动画必须由 Unity 解算。Python 读取的是已解算结果
 
 完整命令的烘焙阶段失败会停止后续步骤。根入口 `convert.py` 执行多个游戏的 Python 转换时，会记录失败并继续处理其余游戏，最后以非零退出码汇总失败。
 
-根目录的合并 `config.json` 和 `index.json` 服务于本项目预览与验证；各包自己的 `config.json` 才是资源包入口。
+根目录的合并 `config.json` 和 `index.json` 服务于本项目预览与验证；模型包以自身的 `config.json` 为入口，通用动作以 `.motionbin` 为入口。
 
 ## 3. 各游戏流程
 
@@ -189,9 +189,9 @@ Unity 将骨架、身体动作和脸部采样写入 `baked_motions/yohane/<模�
 
 ## 4. 参数动作与表情
 
-预览通过 `tools/preview-parameter-input.mjs` 读取 `input_garupa_live2d/.mtn_exp/model.json`，把其动作、表情名称、文件引用和淡入淡出设置整理为参数资源。
+预览通过 `tools/preview-parameter-input.mjs` 读取 `input_garupa_live2d/.mtn_exp/model.json`，把其动作、表情名称和文件引用整理为参数资源。动作使用默认淡入淡出，表情读取 `.exp.json` 内的设置。
 
-`export:garupa-live2d` 调用 `tools/export-garupa-live2d.mjs`，将引用文件与配置输出到 `output_packages/garupa_live2d/`。这一步是资源打包；参数播放与模型表情映射由渲染器和对应 runtime 适配器完成。
+`export:garupa-live2d` 调用 `tools/export-garupa-live2d.mjs`，按声明的名称将引用文件输出到 `output_packages/mtn_exp/`。这一步是资源打包；参数播放与模型表情映射由渲染器和对应 runtime 适配器完成。
 
 ## 5. 修改代码时如何验证
 
