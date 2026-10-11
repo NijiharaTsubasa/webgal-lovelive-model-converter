@@ -54,6 +54,27 @@ class Builder:
 
 
 class SourceSkinTests(unittest.TestCase):
+    def test_rigid_mesh_filter_keeps_its_bone_attachment_without_a_skin(self):
+        mesh = NS(m_Name='wing', m_BindPose=[])
+        renderer = NS(m_Materials=[])
+        decoded = NS(process=lambda: None, m_Vertices=[(0, 0, 0), (1, 0, 0), (0, 1, 0)],
+                     m_Normals=[], m_Tangents=[], m_BoneIndices=[], m_BoneWeights=[],
+                     m_UV0=[], get_triangles=lambda: [[(0, 1, 2)]])
+        builder = Builder()
+        parent = dict(builder.document['nodes'][0])
+        with patch.object(nm, 'MeshHandler', return_value=decoded), \
+                patch.object(nm, 'mesh_morphs', return_value=([], [])):
+            _, name, node = nm._add_normalized_renderer(
+                renderer, 1, builder, {}, [matrix()] * 3, [matrix()] * 3,
+                [matrix()] * 3, {}, frozenset(), mesh_pointer=Pointer(mesh))
+        self.assertEqual(name, 'wing')
+        self.assertEqual(node, 1)
+        self.assertEqual(builder.document['nodes'][0], parent)
+        self.assertEqual(builder.document['nodes'][1]['mesh'], 0)
+        self.assertNotIn('skin', builder.document['nodes'][1])
+        self.assertEqual(builder.document['skins'], [])
+        self.assertEqual(builder.document['scenes'][0]['nodes'], [0])
+
     def assertVectorClose(self, actual, expected):
         self.assertEqual(len(actual), len(expected))
         for component, value in zip(actual, expected):

@@ -40,6 +40,10 @@ test('native expression cascade commits on its last step and preserves compatibl
     model('Third', ['DifferentEye'], ['DifferentClosed', 'DifferentOpen'],
       { eye: 'DifferentEye', closed: 'DifferentClosed', open: 'DifferentOpen' }),
   ];
+  models.push({ type: 'model', name: 'FullFace', role: 'integrated', model: 'model.glb', humanoidScale: 1,
+    morphPoses: [], expressionGroups: [{ name: 'faces', type: 'face', states: [
+      { name: 'Normal', poses: {} }, { name: 'Happy', poses: {} },
+    ] }], defaultExpression: { face: 'Normal' } });
   const rendererSource = path.dirname(createRequire(import.meta.url).resolve('webgal-lovelive-gltf-renderer'));
   const vite = await createServer({ logLevel: 'silent',
     resolve: { alias: { 'webgal-lovelive-gltf-renderer': rendererSource } },
@@ -119,5 +123,11 @@ test('native expression cascade commits on its last step and preserves compatibl
   assert.equal(state.speech, 0.67);
   assert.equal(await page.locator('#eye-open').inputValue(), '0.34');
   assert.equal(await page.locator('#mouth-open').inputValue(), '0.67');
+  await page.selectOption('#character', 'fixture/FullFace/config.json#model:FullFace:integrated');
+  await page.waitForFunction(() => document.querySelector('#status').textContent === 'FullFace');
+  assert.equal(await selects.count(), 1);
+  assert.equal(await page.locator('#expression-groups label').textContent(), '3D表情NormalHappy');
+  await selects.nth(0).selectOption('Happy');
+  assert.deepEqual((await page.evaluate(() => window.__nativeExpressionProbe())).selection, { face: 'Happy' });
   assert.deepEqual(failures, []);
 });

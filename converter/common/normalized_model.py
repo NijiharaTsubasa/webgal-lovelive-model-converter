@@ -53,6 +53,9 @@ class NormalizedModelAdapter:
     def should_export_renderer(self, renderer: Any) -> bool:
         return True
 
+    def should_export_static_renderer(self, renderer: Any) -> bool:
+        return False
+
 
 class FaceBonesCopierAdapter(NormalizedModelAdapter):
     """Redirect the duplicate face rig to the Humanoid bones it mirrors."""
@@ -431,6 +434,8 @@ def export_normalized_model(
     # FaceBonesCopier is a shared runtime convention: Hasunosora and Bang Dream
     # both use a duplicate facial rig whose transforms mirror Humanoid bones.
     source_adapter = adapter or FaceBonesCopierAdapter(environment)
+    if hasattr(source_adapter, "bind_builder"):
+        source_adapter.bind_builder(builder)
     if hasattr(source_adapter, "classify_shader"):
         builder.shader_classifier = source_adapter.classify_shader
     if hasattr(source_adapter, "adapt_material"):
@@ -463,15 +468,24 @@ def export_normalized_model(
         active = getattr(game_object, "m_IsActive", True)
         for entry in game_object.m_Component:
             pointer = component_pointer(entry)
-            if not pointer or pointer.type.name != "SkinnedMeshRenderer":
+            if not pointer or pointer.type.name not in ("SkinnedMeshRenderer", "MeshRenderer"):
                 continue
             renderer = pointer.deref_parse_as_object()
-            if not getattr(renderer, "m_Mesh", None):
+            static_mesh = None
+            if pointer.type.name == "MeshRenderer":
+                if not source_adapter.should_export_static_renderer(renderer):
+                    continue
+                filters = [component_pointer(item) for item in game_object.m_Component
+                           if component_pointer(item) and component_pointer(item).type.name == "MeshFilter"]
+                if len(filters) != 1:
+                    raise ValueError(f"{game_object.m_Name}: expected one MeshFilter for MeshRenderer")
+                static_mesh = filters[0].deref_parse_as_object().m_Mesh
+            if not (static_mesh or getattr(renderer, "m_Mesh", None)):
                 continue
             if not source_adapter.should_export_renderer(renderer):
                 continue
             renderer = source_adapter.adapt_renderer(renderer)
-            mesh_path = pointer_id(renderer.m_Mesh)
+            mesh_path = pointer_id(static_mesh or renderer.m_Mesh)
             if not active and (
                 mesh_path in emitted_mesh_paths or not renderer_uses_eye_shader(renderer)
             ):
@@ -487,6 +501,7 @@ def export_normalized_model(
                 source_world_mats,
                 bone_redirects,
                 copied_face_bones,
+                mesh_pointer=static_mesh,
             )
             emitted_mesh_paths.add(mesh_path)
             morphs, mesh_name, mesh_node = result
@@ -804,8 +819,9 @@ def _add_normalized_renderer(
     source_world_mats: list[list[float]],
     bone_redirects: dict[tuple[int, int], int],
     copied_face_bones: frozenset[tuple[int, int]],
+    mesh_pointer: Any = None,
 ) -> tuple[list[tuple[int, int, str]], str, int]:
-    mesh = renderer.m_Mesh.deref_parse_as_object()
+    mesh = (mesh_pointer or renderer.m_Mesh).deref_parse_as_object()
 
     decoded = MeshHandler(mesh)
     decoded.process()

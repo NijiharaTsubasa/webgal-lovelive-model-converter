@@ -143,7 +143,10 @@ function syncExpressionControls() {
   groups.replaceChildren();
   const definitions = character.faceDefinition?.expressionGroups ?? [];
   const selection = { ...capabilities?.selections };
-  for (const [key, type, title] of [["eye", "eye", "3D眼型"], ["closed", "mouth", "3D闭口"], ["open", "mouth", "3D张口"]]) {
+  const fields = definitions.some(group => group.type === "face")
+    ? [["face", "face", "3D表情"]]
+    : [["eye", "eye", "3D眼型"], ["closed", "mouth", "3D闭口"], ["open", "mouth", "3D张口"]];
+  for (const [key, type, title] of fields) {
     const group = definitions.find(group => group.type === type);
     if (!group) continue;
     const label = document.createElement("label");
@@ -153,7 +156,7 @@ function syncExpressionControls() {
     select.value = selection[key];
     onSelectIncludingRepeat(select, (value) => {
       selection[key] = value;
-      if (key === "open" || !definitions.some(group => group.type === "mouth")) {
+      if (key === "face" || key === "open" || !definitions.some(group => group.type === "mouth")) {
         character.setExpression(selection);
         syncExpressionControls();
       }

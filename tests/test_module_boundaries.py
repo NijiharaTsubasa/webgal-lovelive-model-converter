@@ -6,7 +6,7 @@ from pathlib import Path
 class ModuleBoundaryTests(unittest.TestCase):
     def test_common_does_not_import_game_adapters(self):
         common_dir = Path(__file__).parents[1] / "converter" / "common"
-        forbidden = ("converter.hasunosora", "converter.bangdream", "converter.llas")
+        forbidden = ("converter.hasunosora", "converter.bangdream", "converter.llas", "converter.yohane")
         violations: list[str] = []
 
         for source_path in sorted(common_dir.glob("*.py")):
@@ -27,7 +27,7 @@ class ModuleBoundaryTests(unittest.TestCase):
 
     def test_game_adapters_do_not_import_each_other(self):
         converter_dir = Path(__file__).parents[1] / "converter"
-        adapters = ("hasunosora", "bangdream", "llas")
+        adapters = ("hasunosora", "bangdream", "llas", "yohane")
         violations: list[str] = []
 
         for adapter in adapters:

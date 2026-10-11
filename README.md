@@ -1,6 +1,6 @@
 # WebGAL LoveLive专版 模型与动作转换器
 
-将解密后的 Unity AssetBundle 转为供 [WebGAL LoveLive专版](https://github.com/NijiharaTsubasa/webgal-lovelive) 使用的 glTF 模型包与通用动作包，支持莲之空、BanG Dream 和 LLAS。Humanoid 解算由 Unity 在预处理阶段完成，输出格式见[渲染器标准文档](https://github.com/NijiharaTsubasa/webgal-lovelive-gltf-renderer/tree/main/docs)。
+将解密后的 Unity AssetBundle 转为供 [WebGAL LoveLive专版](https://github.com/NijiharaTsubasa/webgal-lovelive) 使用的 glTF 模型包与通用动作包，支持莲之空、BanG Dream、LLAS 和《幻日夜羽：蜃景努玛梓》。Humanoid 解算由 Unity 在预处理阶段完成，输出格式见[渲染器标准文档](https://github.com/NijiharaTsubasa/webgal-lovelive-gltf-renderer/tree/main/docs)。
 
 参与代码开发可先阅读[转换器架构与贡献指南](docs/architecture.md)，了解整体管线和各游戏的处理入口。
 
@@ -130,13 +130,29 @@ npm run convert:full:bangdream
 
 将需要的动作从 `output_packages/motion/garupa` 复制到 WebGAL LoveLive专版的 `3d/motion/garupa`，建议保留相对目录结构，方便编辑时查找。模型暂不支持加载。
 
-### 4. （可选）为模型生成预览图
+### 4. 幻日夜羽：蜃景努玛梓
+
+#### 4.1 准备输入
+
+从 Android 版游戏 APK 中提取 `assets/aa/Android` 下的全部 `.bundle`（其他平台的路径待确认），自行解密后复制进 `input_yohane`，请保持原文件名不变。可直接放在该目录下，也可保留子目录结构，转换器会递归读取。
+
+#### 4.2 运行转换
+
+```powershell
+npm run convert:full:yohane
+```
+
+模型输出在 `output_packages/yohane`，动作输出在 `output_packages/motion/yohane`。模型目录可复制到游戏的 `game/3d/figure`；动作可复制到 `game/3d/motion/yohane`，请保留相对目录结构，以便模型找到默认动作。
+
+当前部分布料物理尚未完整支持。
+
+### 5. （可选）为模型生成预览图
 
 WebGAL LoveLive Terre 的模型选择界面支持显示 3D 模型的预览图，方便查找角色与服装。完成模型转换后，可按以下步骤生成透明背景的上半身缩略图。
 
 注：重新转换模型后，由于`config.json`会被覆盖，需要重新生成预览图。
 
-#### 4.1 准备运行时资源
+#### 5.1 准备运行时资源
 
 下载 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime)，将其放在本仓库的同级目录，并将目录名设为 `webgal-lovelive-game-runtime`。请保留其中的 `packages` 目录及内容：
 
@@ -154,7 +170,7 @@ WebGAL LoveLive Terre 的模型选择界面支持显示 3D 模型的预览图，
 $env:GAME_RUNTIME_DIR = 'D:\webgal-lovelive-game-runtime\packages'
 ```
 
-#### 4.2 生成预览图
+#### 5.2 生成预览图
 
 首次使用时安装渲染所需的 Chromium 浏览器，然后生成预览图：
 
@@ -177,17 +193,17 @@ npm run preview:models -- --browser msedge
 npm run preview:models -- --missing
 ```
 
-#### 4.3 在 Terre 中使用
+#### 5.3 在 Terre 中使用
 
-将生成后的模型目录复制到游戏工程的 `game/figure` 下，Terre 即可在网格视图中显示缩略图，鼠标悬停时显示预览图、模型名称和完整说明。
+将生成后的模型目录复制到游戏工程的 `game/3d/figure` 下，Terre 即可在网格视图中显示缩略图，鼠标悬停时显示预览图、模型名称和完整说明。
 
-若模型已经复制到游戏工程，也可以按模型名称同步预览图。将下面的路径替换成您游戏工程的 `figure` 目录；此命令补齐输出中缺少的预览图，并仅更新游戏模型配置的 `preview` 字段：
+若模型已经复制到游戏工程，也可以按模型名称同步预览图。将下面的路径替换成您游戏工程的 `game/3d/figure` 目录；此命令补齐输出中缺少的预览图，并仅更新游戏模型配置的 `preview` 字段：
 
 ```powershell
-npm run preview:models -- --missing --sync "D:\我的游戏\game\figure"
+npm run preview:models -- --missing --sync "D:\我的游戏\game\3d\figure"
 ```
 
-### 5. 一次转换全部游戏
+### 6. 一次转换全部游戏
 
 准备好需要转换的游戏输入后执行：
 
@@ -197,18 +213,18 @@ npm run convert:full
 
 此命令依次发现并烘焙各游戏的输入，再清空并重建有输入的游戏输出。没有识别到模型或动作时，脚本打印“输入为空”并正常跳过。某款游戏没有输入时，其已有输出保持不变。有效输入缺少依赖或烘焙失败会报错并停止。
 
-### 6. 转换命令清单
+### 7. 转换命令清单
 
 首次转换或修改了烘焙实现时使用“完整转换”；已有烘焙结果、只需重新生成产物时使用“复用烘焙结果转换”。
 
-| 操作 | 莲之空 | LLAS | BanG Dream |
-| --- | --- | --- | --- |
-| 完整转换 | `npm run convert:full:hasunosora` | `npm run convert:full:llas` | `npm run convert:full:bangdream` |
-| 复用烘焙结果转换 | `npm run convert:hasunosora` | `npm run convert:llas` | `npm run convert:bangdream` |
-| 复用烘焙结果，清空并重建该游戏输出 | `npm run convert:hasunosora:clean` | `npm run convert:llas:clean` | `npm run convert:bangdream:clean` |
-| 只烘焙模型和动作 | `npm run bake:hasunosora` | `npm run bake:llas` | `npm run bake:bangdream` |
-| 只烘焙模型 | `npm run bake:hasunosora:models` | `npm run bake:llas:models` | `npm run bake:bangdream:models` |
-| 只烘焙动作 | `npm run bake:hasunosora:motions` | `npm run bake:llas:motions` | `npm run bake:bangdream:motions` |
+| 操作 | 莲之空 | LLAS | BanG Dream | 幻日夜羽 |
+| --- | --- | --- | --- | --- |
+| 完整转换 | `npm run convert:full:hasunosora` | `npm run convert:full:llas` | `npm run convert:full:bangdream` | `npm run convert:full:yohane` |
+| 复用烘焙结果转换 | `npm run convert:hasunosora` | `npm run convert:llas` | `npm run convert:bangdream` | `npm run convert:yohane` |
+| 复用烘焙结果，清空并重建该游戏输出 | `npm run convert:hasunosora:clean` | `npm run convert:llas:clean` | `npm run convert:bangdream:clean` | `npm run convert:yohane:clean` |
+| 只烘焙模型和动作 | `npm run bake:hasunosora` | `npm run bake:llas` | `npm run bake:bangdream` | `npm run bake:yohane` |
+| 只烘焙模型 | `npm run bake:hasunosora:models` | `npm run bake:llas:models` | `npm run bake:bangdream:models` | `npm run bake:yohane:models` |
+| 只烘焙动作 | `npm run bake:hasunosora:motions` | `npm run bake:llas:motions` | `npm run bake:bangdream:motions` | `npm run bake:yohane:motions` |
 
 普通转换会覆盖本次涉及的模型和动作，不删除未涉及的旧输出；`:clean` 和完整转换会清空所选游戏的输出，手工修改过的输出文件也会被删除。烘焙结果保存在 `baked_motions`，单独烘焙不会生成最终资源包。BanG Dream 的动作烘焙仍需要一套模型作为 Humanoid 参照。
 

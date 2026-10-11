@@ -85,7 +85,8 @@ internal static class MotionBaker
         Func<AnimationClip, bool> isBodyClip = null,
         GameObject sourcePrefab = null,
         bool reportHasunosoraProgress = false,
-        Action<GameObject> prepareSourceInstance = null)
+        Action<GameObject> prepareSourceInstance = null,
+        IReadOnlyCollection<AnimationClip> sourceClips = null)
     {
         if (animator == null || avatar == null || !avatar.isHuman || !avatar.isValid)
             throw new ArgumentException("A valid Humanoid Animator and Avatar are required.");
@@ -102,8 +103,12 @@ internal static class MotionBaker
             var motionBundles = candidateBundles
                 .Select((bundle, index) =>
                 {
-                    var controllers = bundle.LoadAllAssets<RuntimeAnimatorController>();
-                    var clips = MotionClips(bundle, controllers, includeControllerClips);
+                    // Explicit clips isolate a selected controller's body graph from
+                    // unrelated controllers sharing the same bundle and clip names.
+                    var controllers = sourceClips == null
+                        ? bundle.LoadAllAssets<RuntimeAnimatorController>()
+                        : Array.Empty<RuntimeAnimatorController>();
+                    var clips = sourceClips?.ToArray() ?? MotionClips(bundle, controllers, includeControllerClips);
                     if (reportHasunosoraProgress && ((index + 1) % 100 == 0 || index + 1 == candidateBundles.Length))
                         Debug.Log($"[HASUNOSORA_PROGRESS] stage=motion_scan current={index + 1} total={candidateBundles.Length}");
                     return (bundle, controllers, clips);

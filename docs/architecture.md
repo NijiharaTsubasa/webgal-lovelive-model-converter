@@ -32,7 +32,7 @@ glTF 能存储网格、骨骼、蒙皮和骨骼动画，但它没有 Unity Human
 
 ### 各游戏适配负责还原资源的组合方式
 
-骨骼和动画归一化解决了跨模型播放，但一个人物通常不只是一张网格。转换器还要找到依赖、挂接头部与五官、解释来源材质、整理表情控制，以及提取物理参数。这些信息在三款游戏中存放和使用的方式不同，所以共用导出代码之外仍有游戏适配模块。
+骨骼和动画归一化解决了跨模型播放，但一个人物通常不只是一张网格。转换器还要找到依赖、挂接头部与五官、解释来源材质、整理表情控制，以及提取物理参数。这些信息在各游戏中存放和使用的方式不同，所以共用导出代码之外仍有游戏适配模块。
 
 最终分工是：Unity 提供 Humanoid 解算结果，Python 把原始资源整理成标准资源包，渲染器消费标准数据，game-runtime 承担 Shader 和 Behavior 等游戏特定的运行逻辑。下面按这个分工介绍代码与管线。
 
@@ -43,7 +43,7 @@ glTF 能存储网格、骨骼、蒙皮和骨骼动画，但它没有 Unity Human
 | `convert.py` | 调度各游戏的 Python 转换入口，并合并预览清单 |
 | `converter/bake_*.py` | 发现烘焙输入、组织批次、启动 Unity、检查烘焙结果 |
 | `converter/convert_*.py` | 各游戏的转换命令行入口 |
-| `converter/hasunosora/`、`bangdream/`、`llas/` | 解析各游戏的资源组织、材质、表情和动作控制逻辑 |
+| `converter/hasunosora/`、`bangdream/`、`llas/`、`yohane/` | 解析各游戏的资源组织、材质、表情和动作控制逻辑 |
 | `converter/common/` | GLB 写入、模型归一化导出、蒙皮、物理数据提取、动作控制图和二进制编码等共用代码 |
 | `converter/unity_baker/` | Unity Editor 工程，执行真实 Humanoid 解算 |
 | `src/`、`index.html`、`vite.config.js` | 预览界面及本地资源服务；角色播放由渲染器依赖完成 |
@@ -67,9 +67,9 @@ Python：解析网格、材质、表情、物理 → 应用归一化结果 → �
 
 ### 2.1 Unity 烘焙
 
-统一入口为 `converter/unity_baker/Assets/Editor/BakePipeline.cs`。`Games/` 下的适配器处理模型挂接、Avatar 来源及游戏专有的准备步骤；`SkeletonNormalizer.cs` 和 `MotionBaker.cs` 执行共用归一化与动作采样。`HumanoidJointFrames.cs`、`HumanoidPoseCalibration.cs` 负责归一化所需的关节基准和姿态校准。
+`converter/unity_baker/Assets/Editor/BakePipeline.cs` 与 `YohaneBaker.cs` 接收 Python 组织的烘焙批次。`Games/` 下的适配器处理模型挂接、Avatar 来源及游戏专有的准备步骤；`SkeletonNormalizer.cs` 和 `MotionBaker.cs` 执行共用归一化与动作采样。`HumanoidJointFrames.cs`、`HumanoidPoseCalibration.cs` 负责归一化所需的关节基准和姿态校准。
 
-烘焙结果是转换器的中间数据，不是发布资源。默认放在 `baked_motions/`；LLAS 使用其 `llas/` 子目录，BanG Dream 的独立动作使用 `bangdream/` 子目录。模型骨架记录在对应的 `normalized/*.skeleton.json` 中，动作记录在 `*.baked.json` 中。
+烘焙结果是转换器的中间数据，不是发布资源。默认放在 `baked_motions/`；LLAS 使用其 `llas/` 子目录，BanG Dream 的独立动作使用 `bangdream/` 子目录。这三款游戏的模型骨架记录在对应的 `normalized/*.skeleton.json` 中，动作记录在 `*.baked.json` 中。幻日夜羽按模型组织在 `yohane/<模型名>/`，包含 `skeleton.json`、`face_samples.json` 与身体动作采样。
 
 Humanoid 肌肉动画必须由 Unity 解算。Python 读取的是已解算结果，不在转换阶段重新实现 Mecanim。独立动作使用一个合适的参照 Avatar 烘焙成共享骨骼数据，不为每个目标模型生成一套动作。
 
@@ -92,7 +92,7 @@ Humanoid 肌肉动画必须由 Unity 解算。Python 读取的是已解算结果
 | `convert:<game>` | 使用已有烘焙数据增量写入，不清空其他已有包 |
 | `convert:<game>:clean` | 重建该游戏输出 |
 | `convert:full:<game>` | 先烘焙，再重建该游戏输出 |
-| `convert:full` | 各脚本发现实际资源后，依次烘焙莲之空、BanG Dream、LLAS，随后重建有输入的游戏输出；空输入跳过 |
+| `convert:full` | 各脚本发现实际资源后，依次烘焙莲之空、BanG Dream、LLAS、幻日夜羽，随后重建有输入的游戏输出；空输入跳过 |
 | `merge:index` | 根据现有配置更新预览清单 |
 
 完整命令的烘焙阶段失败会停止后续步骤。根入口 `convert.py` 执行多个游戏的 Python 转换时，会记录失败并继续处理其余游戏，最后以非零退出码汇总失败。
@@ -174,6 +174,18 @@ LLAS 有三层额外工作：输入文件名可能是不透明的存储键，不
 `classify_llas.py` 可把模型、动作及其依赖复制到 `character/`、`motion/`。一旦这些目录有合法分类输入，管线就优先消费它们；否则步骤 1 扫描输入根目录。
 
 默认动作使用对应角色的 `idle1_l`，静止姿态采样首帧；璃奈板角色使用璃奈普通脸角色的对应动作。缺少对应动作时省略默认配置。名称说明由 `metadata.py` 读取 `db/asset_a_ja.db`、`masterdata.db`、`dictionary_ja_k.db` 关联，缺少所需 DB 时不生成。
+
+### 3.4 幻日夜羽
+
+入口：`bake_yohane.py` → `YohaneBaker.cs` → `yohane/__init__.py`。
+
+输入是已解密的原始 `.bundle`。`yohane/source.py` 读取包内资源路径和外部 CAB 引用，定位带 Humanoid Avatar 的人物 Prefab、剧情控制器与依赖闭包。模型沿用原 Avatar；露比在归一化前取消原始的 `0.4` 根缩放。
+
+Unity 将骨架、身体动作和脸部采样写入 `baked_motions/yohane/<模型名>/`。脸部采样分别记录完整情绪基础与原眨眼、口部附加层的 Morph 权重。Python 把它们整理为完整脸部表情，并从原控制器读取每种表情对应的开合通道。
+
+模型导出同时保留启用且层级激活的蒙皮网格与普通配件网格，普通配件按原父骨挂接。材质采用原始贴图的无光照显示。MagicaCloth 1 保存的骨链、碰撞体及布料顶点权重用于生成通用物理数据；布料由通用求解器计算，其动态效果不等同于原 MagicaCloth 代理求解。
+
+剧情动作按控制器状态图组织，进入片段与保持或循环片段作为一个动作输出；角色与服装控制器分别放在动作子目录，避免原 Clip 同名时覆盖。模型的默认动作与静止姿态取对应剧情待机动作及其首帧。
 
 ## 4. 参数动作与表情
 

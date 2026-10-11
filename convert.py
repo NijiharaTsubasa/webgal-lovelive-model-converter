@@ -37,6 +37,7 @@ GAMES: list[str] = [
     "hasunosora",
     "bangdream",
     "llas",
+    "yohane",
 ]
 
 
