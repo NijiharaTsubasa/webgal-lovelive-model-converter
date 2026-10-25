@@ -280,6 +280,18 @@ def extract_head_expression(
         result["morphPoses"].append({"name": name, "targets": targets})
         return name
 
+    for index, shape in by_index.items():
+        source_name = shape["Name"]
+        if not isinstance(source_name, str) or not source_name:
+            raise ValueError("FaceController BlendShapes map has no name")
+        name = f"source.{source_name}"
+        if name in recipes:
+            targets = _morph_targets_for_shapes([index], mesh_morphs, by_index)
+            if recipes[name] != targets:
+                raise ValueError(f"Conflicting FaceController Morph map {source_name!r}")
+            continue
+        add_pose(name, [index])
+
     layer_poses: dict[str, dict[str, str]] = {}
     for prefix, layer in (("face", expressions_layer), ("eyes", eyes_layer), ("mouth", lipsync_layer)):
         layer_poses[prefix] = {
@@ -462,12 +474,16 @@ def export_glb(bundle: BundleAssets, normalized_skeleton: dict[str, Any] | None 
     if root_pointer is None:
         raise ValueError(f"No prefab found in {bundle.path.name}")
 
-    return export_normalized_model(
+    adapter = BangDreamModelAdapter(bundle.env, role=bundle.kind, prefab_pointer=root_pointer)
+    exported = export_normalized_model(
         bundle.env,
         root_pointer,
         normalized_skeleton,
-        BangDreamModelAdapter(bundle.env),
+        adapter,
+        source_uv_channels=(0, 1),
     )
+    adapter.finalize_export(exported)
+    return exported
 
 
 # ---------------------------------------------------------------------------
@@ -1091,6 +1107,7 @@ def build_component_config(
         "role": bundle.kind,
         "model": model_filename,
         "humanoidScale": scale,
+        "renderProfile": "garupa-menu",
     }
     if bundle.kind == "head":
         component.update(expressions)

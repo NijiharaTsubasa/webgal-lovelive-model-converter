@@ -219,6 +219,8 @@ async function loadEntries(entries, { preserveView = false } = {}) {
     throw error;
   }
   if (request !== modelSelectionRequest || character.root !== result.root) return;
+  // Preparation can restore renderer state captured before a window or panel resize.
+  resizeViewport();
   preparedModelRoot = result.root;
 }
 
@@ -434,14 +436,15 @@ meshClothToggle.addEventListener("change", () => {
   if (selectedModelEntries.length) loadEntries(selectedModelEntries, { preserveView: true }).catch(showError);
 });
 document.querySelector("#reset").addEventListener("click", resetCamera);
-new ResizeObserver(() => {
+function resizeViewport() {
   const width = viewport.clientWidth;
   const height = viewport.clientHeight;
   if (!width || !height) return;
   renderer.setSize(width, height);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
-}).observe(viewport);
+}
+new ResizeObserver(resizeViewport).observe(viewport);
 
 renderer.setAnimationLoop((timestamp) => {
   timer.update(timestamp);
@@ -450,7 +453,9 @@ renderer.setAnimationLoop((timestamp) => {
     controls.update();
     // Preserve the last canvas frame until this selection's private render
     // resources are ready; animation time must not advance while preparing.
-    if (character.root && character.root !== preparedModelRoot) return;
+    // Shader runtimes are attached before load() publishes the model root.
+    if ((!character.root && character.shaderScope)
+        || (character.root && character.root !== preparedModelRoot)) return;
     const changed = character.update(delta);
     if (changed) {
       stopMotionButton.disabled = !changed.canStop;

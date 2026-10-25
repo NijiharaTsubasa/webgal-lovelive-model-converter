@@ -1,3 +1,4 @@
+from copy import deepcopy
 import math
 import unittest
 from pathlib import Path
@@ -136,13 +137,66 @@ class BangDreamExpressionTests(unittest.TestCase):
 
 
     def test_shapes_are_array_indices_not_type_or_name(self):
-        for shape in self.face['BlendShapes']:
+        for index, shape in enumerate(self.face['BlendShapes']):
             shape['Type'] = 99
-            shape['Name'] = 'not_a_morph_name'
+            shape['Name'] = f'not_a_morph_name_{index}'
         package = self.extract()
         recipes = {p["name"]: p["targets"] for p in package["morphPoses"]}
         self.assertEqual(recipes["face.Joy"]["face_Base_obj"]["face_main_eye_joy_L"], .8)
         self.assertEqual(recipes["mouth.A"]["face_Base_obj"]["face_main_mouth_open_a"], 1)
+
+    def test_exports_unreferenced_source_maps_as_independent_poses(self):
+        self.face['BlendShapes'].append({
+            'Name': 'unused_eye', 'Type': 999, 'RangeMin': 0, 'RangeMax': 70,
+            'Targets': [{'mesh': 'face_Base_obj', 'morph': 'face_main_eye_wink_R'}],
+        })
+        package = self.extract()
+        recipes = {pose['name']: pose['targets'] for pose in package['morphPoses']}
+        self.assertEqual(recipes['source.unused_eye'], {
+            'face_Base_obj': {'face_main_eye_wink_R': .7},
+        })
+        self.assertTrue(all('source.unused_eye' not in state['poses']
+                            for group in package['expressionGroups']
+                            for state in group['states']))
+
+    def test_source_poses_preserve_explicit_targets_zero_caps_and_native_states(self):
+        baseline = self.extract()
+        self.face['BlendShapes'].append({
+            'Name': 'disabled', 'Type': 700, 'RangeMin': 0, 'RangeMax': 0,
+            'Targets': [{'mesh': 'face_Base_obj', 'morph': 'face_main_mouth_joy'}],
+        })
+        package = self.extract()
+        recipes = {pose['name']: pose['targets'] for pose in package['morphPoses']}
+        self.assertEqual(recipes['source.disabled'], {
+            'face_Base_obj': {'face_main_mouth_joy': 0},
+        })
+        self.assertEqual(recipes['source.joy_l'], {
+            'face_Base_obj': {'face_main_eye_joy_L': .8},
+            'face_NoOutline_obj': {'eyelash_joy_L': .8},
+        })
+        self.assertEqual(package['expressionGroups'], baseline['expressionGroups'])
+        self.assertEqual(package['defaultExpression'], baseline['defaultExpression'])
+        native = lambda item: [pose for pose in item['morphPoses']
+                               if not pose['name'].startswith('source.')]
+        self.assertEqual(native(package), native(baseline))
+
+    def test_identical_duplicate_source_maps_have_one_unique_pose(self):
+        self.face['BlendShapes'].append(deepcopy(self.face['BlendShapes'][0]))
+        package = self.extract()
+        self.assertEqual(sum(pose['name'] == 'source.joy_l'
+                             for pose in package['morphPoses']), 1)
+
+    def test_rejects_conflicting_source_map_names(self):
+        duplicate = deepcopy(self.face['BlendShapes'][0])
+        duplicate['RangeMax'] = 60
+        self.face['BlendShapes'].append(duplicate)
+        with self.assertRaisesRegex(ValueError, 'Conflicting FaceController Morph map'):
+            self.extract()
+
+    def test_rejects_unnamed_source_map(self):
+        self.face['BlendShapes'][0]['Name'] = ''
+        with self.assertRaisesRegex(ValueError, 'map has no name'):
+            self.extract()
 
     def test_rejects_missing_controller_shape(self):
         self.face["Layers"][0]["Mixers"][1]["Shapes"] = [31]

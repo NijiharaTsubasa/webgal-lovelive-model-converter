@@ -2,80 +2,65 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..common import pointer_id
 from ..common.normalized_model import FaceBonesCopierAdapter
+from .meteor_material_mapping import MeteorMaterialMapping, initialized_menu_layer, renderer_activity
+from .meteor_face_binding import finalize_body_face_frame
+from .meteor_material import MeteorMaterialExporter
+from .meteor_bounds import attach_renderer_bounds
 
 
 class _RendererWithMaterials:
-    """Read-only renderer view with source-authoritative material slots."""
+    """Read-only initialized view; serialized objects and PPtrs stay untouched."""
 
     def __init__(self, source: Any, materials: list[Any]) -> None:
-        self._source = source
-        self._materials = materials
+        self.source_renderer = source
+        self.original_materials = tuple(getattr(source, "m_Materials", []))
+        self.m_Materials = materials
+        pointer = getattr(source, "m_GameObject", None)
+        game_object = pointer.deref_parse_as_object() if pointer else None
+        self.original_layer = getattr(game_object, "m_Layer", None)
+        first_name = str(materials[0].deref_parse_as_object().m_Name) if materials and materials[0] else ""
+        self.initialized_layer = (initialized_menu_layer(self.original_layer, first_name)
+                                  if self.original_layer is not None else None)
 
     def __getattr__(self, attr: str) -> Any:
-        if attr == "m_Materials":
-            return self._materials
-        return getattr(self._source, attr)
+        return getattr(self.source_renderer, attr)
 
 
 class BangDreamModelAdapter(FaceBonesCopierAdapter):
-    """Contain Bang Dream's runtime model adjustments behind one seam."""
+    """Apply selected ColorVariation before exporting each source renderer."""
 
-    def __init__(self, environment: Any) -> None:
+    def __init__(self, environment: Any, color_type: int = 0, *, role: str = "", prefab_pointer: Any = None) -> None:
         super().__init__(environment)
-        self.textured_materials_by_mesh: dict[tuple[int, int], list[Any]] = {}
-        for obj in environment.objects:
-            if obj.type.name != "SkinnedMeshRenderer":
-                continue
-            renderer = obj.read()
-            if not getattr(renderer, "m_Mesh", None):
-                continue
-            for material_pointer in renderer.m_Materials:
-                # Unity serializes an empty material slot as a non-None PPtr
-                # whose PathID is zero.  Such pointers are falsy and cannot be
-                # dereferenced.
-                if not material_pointer:
-                    continue
-                material = material_pointer.deref_parse_as_object()
-                if any(
-                    getattr(entry[1], "m_Texture", None)
-                    and entry[1].m_Texture.m_PathID != 0
-                    for entry in material.m_SavedProperties.m_TexEnvs
-                ):
-                    self.textured_materials_by_mesh.setdefault(
-                        pointer_id(renderer.m_Mesh), []
-                    ).append(material_pointer)
+        self.material_mapping = MeteorMaterialMapping(environment, color_type)
+        self.role = role
+        self.prefab_pointer = prefab_pointer
+        self._exported_renderers = []
+
+    def bind_builder(self, builder: Any) -> None:
+        self.material_exporter = MeteorMaterialExporter(builder)
+
+    def classify_shader(self, material: Any) -> None:
+        return None
+
+    def adapt_material(self, material: Any, result: dict) -> None:
+        self.material_exporter.adapt_material(material, result)
+
+    def finalize_export(self, exported: Any) -> None:
+        finalize_body_face_frame(exported, role=self.role, prefab_pointer=self.prefab_pointer)
+        attach_renderer_bounds(exported, self._exported_renderers, role=self.role)
 
     def adapt_renderer(self, renderer: Any) -> Any:
-        textured_materials = self.textured_materials_by_mesh.get(pointer_id(renderer.m_Mesh))
-        original_materials = list(getattr(renderer, "m_Materials", []))
-        if not original_materials or not textured_materials:
-            return renderer
+        context = self.material_mapping.context_for_renderer(renderer)
+        return _RendererWithMaterials(renderer, [
+            self.material_mapping.bind(pointer, category_context=context)
+            for pointer in getattr(renderer, "m_Materials", [])
+        ])
 
-        candidates: dict[str, list[Any]] = {}
-        for material_pointer in textured_materials:
-            material = material_pointer.deref_parse_as_object()
-            name = str(material.m_Name).removesuffix("_01")
-            candidates.setdefault(name, []).append(material_pointer)
+    def should_export_renderer(self, renderer: Any) -> bool:
+        return renderer_activity(renderer)[0]
 
-        swapped: list[Any] = []
-        used_candidates: set[Any] = set()
-        for material_pointer in original_materials:
-            if not material_pointer:
-                swapped.append(material_pointer)
-                continue
-            material = material_pointer.deref_parse_as_object()
-            name = str(material.m_Name).removesuffix("_01")
-            replacement = next(
-                (
-                    candidate
-                    for candidate in candidates.get(name, [])
-                    if candidate not in used_candidates
-                ),
-                None,
-            )
-            if replacement is not None:
-                used_candidates.add(replacement)
-            swapped.append(replacement if replacement is not None else material_pointer)
-        return _RendererWithMaterials(renderer, swapped)
+    def adapt_exported_renderer(self, renderer: Any, mesh_node: int, builder: Any) -> None:
+        self._exported_renderers.append((renderer, mesh_node))
+        if renderer.initialized_layer is not None:
+            builder.document["nodes"][mesh_node].setdefault("extras", {})["meteorLayer"] = renderer.initialized_layer

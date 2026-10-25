@@ -10,18 +10,33 @@ import UnityPy
 from converter.common.glb import GlbBuilder
 
 
-def texture(*, mode=1, mips=2, wrap_u=0, wrap_v=0):
+def texture(*, mode=1, mips=2, wrap_u=0, wrap_v=0, aniso=0):
     return SimpleNamespace(
         object_reader=SimpleNamespace(assets_file=object(), path_id=1),
         m_Name="sampling-test", m_ColorSpace=1, m_MipCount=mips,
         m_TextureSettings=SimpleNamespace(
-            m_FilterMode=mode, m_WrapU=wrap_u, m_WrapV=wrap_v,
+            m_FilterMode=mode, m_WrapU=wrap_u, m_WrapV=wrap_v, m_Aniso=aniso,
         ),
         image=Image.new("RGBA", (2, 2)),
     )
 
 
 class UnityTextureSamplerTests(unittest.TestCase):
+    def test_source_anisotropy_preserved_without_redundant_disabled_marker(self):
+        for aniso in (0, 1, 2, 8, 16):
+            builder = GlbBuilder()
+            builder.add_image(texture(aniso=aniso))
+            extras = builder.document['textures'][0]['extras']
+            self.assertEqual(extras, {'colorSpace': 'srgb', **({'anisotropy': aniso} if aniso > 1 else {})})
+
+    def test_invalid_source_anisotropy_fails_before_writing(self):
+        for aniso in (-1, 1.5, 2.0, True, None, '2'):
+            builder = GlbBuilder()
+            with self.assertRaisesRegex(ValueError, 'm_Aniso'):
+                builder.add_image(texture(aniso=aniso))
+            self.assertEqual(builder.binary, b'')
+            self.assertEqual(builder.document['images'], [])
+
     def test_filter_modes_preserve_mip_selection_and_non_mip_sampling(self):
         for mode, mips, mag, minimum in (
             (0, 1, 9728, 9728), (1, 1, 9729, 9729), (2, 1, 9729, 9729),

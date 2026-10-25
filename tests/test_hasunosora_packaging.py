@@ -52,7 +52,7 @@ class HasunosoraPackagingTests(unittest.TestCase):
             m_Name="shadow_color",
             m_ColorSpace=1,
             m_MipCount=1,
-            m_TextureSettings=SimpleNamespace(m_FilterMode=1, m_WrapU=0, m_WrapV=0),
+            m_TextureSettings=SimpleNamespace(m_FilterMode=1, m_WrapU=0, m_WrapV=0, m_Aniso=0),
             image=Image.new("RGBA", (1, 1), (128, 64, 32, 255)),
             object_reader=SimpleNamespace(assets_file=object(), path_id=1),
         )
@@ -60,7 +60,7 @@ class HasunosoraPackagingTests(unittest.TestCase):
             m_Name="control_mask",
             m_ColorSpace=0,
             m_MipCount=1,
-            m_TextureSettings=SimpleNamespace(m_FilterMode=1, m_WrapU=0, m_WrapV=0),
+            m_TextureSettings=SimpleNamespace(m_FilterMode=1, m_WrapU=0, m_WrapV=0, m_Aniso=0),
             image=Image.new("RGBA", (1, 1), (128, 64, 32, 255)),
             object_reader=SimpleNamespace(assets_file=object(), path_id=2),
         )

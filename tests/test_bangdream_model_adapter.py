@@ -1,7 +1,9 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from converter.bangdream.model_adapter import BangDreamModelAdapter
+from converter.bangdream.meteor_material_mapping import MaterialControllerContext
 
 
 class Pointer:
@@ -42,25 +44,40 @@ class BangDreamModelAdapterTests(unittest.TestCase):
 
         adapter = BangDreamModelAdapter(SimpleNamespace(objects=[reader]))
 
-        self.assertEqual(adapter.textured_materials_by_mesh, {})
+        self.assertEqual(adapter.material_mapping.mapping, {})
+        self.assertEqual(adapter.material_mapping.selection_status, "absent")
 
     def test_adaptation_preserves_empty_material_slot_without_dereferencing_it(self):
         mesh = Pointer(object())
         textured_pointer = Pointer(material("Face_01", textured=True))
         adapter = BangDreamModelAdapter(SimpleNamespace(objects=[]))
-        adapter.textured_materials_by_mesh[(id(mesh.assetsfile), mesh.m_PathID)] = [
-            textured_pointer
-        ]
+        # SetupColor supplies the exact source Material name as its key. Mesh
+        # identity and the target material's suffix do not participate.
+        adapter.material_mapping.mapping["Face"] = textured_pointer
         empty_pointer = Pointer(path_id=0)
         renderer = SimpleNamespace(
             m_Mesh=mesh,
             m_Materials=[empty_pointer, Pointer(material("Face", textured=False))],
         )
 
-        adapted = adapter.adapt_renderer(renderer)
+        with patch.object(adapter.material_mapping, "context_for_renderer", return_value=MaterialControllerContext((1, 1), False)):
+            adapted = adapter.adapt_renderer(renderer)
 
         self.assertIs(adapted.m_Materials[0], empty_pointer)
-        self.assertIs(adapted.m_Materials[1], textured_pointer)
+        self.assertIs(adapted.m_Materials[1].source_pointer, textured_pointer)
+        self.assertEqual(renderer.m_Materials[1].deref_parse_as_object().m_Name, "Face")
+        self.assertIs(adapted.source_renderer, renderer)
+
+    def test_menu_layer_uses_first_selected_material_without_mutating_game_object(self):
+        game_object = SimpleNamespace(m_Layer=24)
+        renderer = SimpleNamespace(
+            m_Materials=[Pointer(material("HairOffset", textured=True))],
+            m_GameObject=Pointer(game_object),
+        )
+        adapted = BangDreamModelAdapter(SimpleNamespace(objects=[])).adapt_renderer(renderer)
+        self.assertEqual(adapted.original_layer, 24)
+        self.assertEqual(adapted.initialized_layer, 29)
+        self.assertEqual(game_object.m_Layer, 24)
 
 
 if __name__ == "__main__":

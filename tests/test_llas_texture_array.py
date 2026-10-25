@@ -55,7 +55,7 @@ class LlasTextureArrayTests(unittest.TestCase):
             m_Name="cheek-test",
             m_Width=1, m_Height=2, m_Depth=2,
             m_Format=4, m_MipCount=1, m_ColorSpace=1,
-            m_TextureSettings=SimpleNamespace(m_WrapU=1, m_WrapV=1, m_FilterMode=1),
+            m_TextureSettings=SimpleNamespace(m_WrapU=1, m_WrapV=1, m_FilterMode=1, m_Aniso=0),
             image_data=red + blue + green + yellow,
         )
         builder = GlbBuilder()

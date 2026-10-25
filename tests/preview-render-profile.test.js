@@ -30,6 +30,8 @@ test('preview waits for asynchronous profile preparation and ignores cancelled s
       const originalRender=character.render.bind(character);
       character.render=()=>{if(!character.root)window.__emptyProfileRenders++;return originalRender();};
       window.__clearProfile=()=>character.clear();
+      window.__profileViewport=()=>({actual:renderer.getCurrentViewport(new THREE.Vector4()).toArray(),
+        buffer:[renderer.domElement.width,renderer.domElement.height],aspect:camera.aspect});
     `});
   });
   const model=name=>({type:'model',name,role:'integrated',model:`${name}.glb`,humanoidScale:1,
@@ -65,8 +67,13 @@ test('preview waits for asynchronous profile preparation and ignores cancelled s
   await page.waitForTimeout(100);
   assert.equal(await page.evaluate(()=>window.__profileActor()),'Second');
   assert.deepEqual(await page.evaluate(()=>window.__profileUpdates),[]);
+  await page.setViewportSize({width:1920,height:1080});
+  await page.waitForFunction(()=>window.__profileViewport().buffer[0]>1400);
   await page.evaluate(()=>window.__profiles[1].release());
   await page.waitForFunction(()=>window.__profiles[1].draws>0);
+  const viewport=await page.evaluate(()=>window.__profileViewport());
+  assert.deepEqual(viewport.actual.slice(2),viewport.buffer,'preparation must not restore a viewport from before the window resize');
+  assert.ok(Math.abs(viewport.aspect-viewport.buffer[0]/viewport.buffer[1])<1e-6);
   assert.deepEqual(failures,[]);
   assert.equal(await page.locator('#status').textContent(),'Second');
   const emptyRenders=await page.evaluate(()=>window.__emptyProfileRenders);

@@ -50,6 +50,10 @@ class NormalizedModelAdapter:
     def adapt_renderer(self, renderer: Any) -> Any:
         return renderer
 
+    def adapt_exported_renderer(self, renderer: Any, mesh_node: int, builder: GlbBuilder) -> None:
+        """Attach game rendering inputs after the mesh node has been emitted."""
+        return None
+
     def should_export_renderer(self, renderer: Any) -> bool:
         return True
 
@@ -366,6 +370,20 @@ def _node_world_matrices(nodes: list[dict[str, Any]]) -> list[list[float]]:
     return [compute(index) for index in range(len(nodes))]
 
 
+def _validated_source_uv_channels(channels: tuple[int, ...]) -> tuple[int, ...]:
+    try:
+        values = tuple(channels)
+    except TypeError as error:
+        raise TypeError("source_uv_channels must be an iterable of Unity UV channel indices") from error
+    if any(isinstance(channel, bool) or not isinstance(channel, int) for channel in values):
+        raise TypeError("source_uv_channels must contain integer channel indices")
+    if any(not 0 <= channel <= 7 for channel in values):
+        raise ValueError("source_uv_channels indices must be in 0..7")
+    if len(set(values)) != len(values):
+        raise ValueError("source_uv_channels indices must be unique")
+    return values
+
+
 def export_normalized_model(
     environment: Any,
     root_pointer: Any,
@@ -373,11 +391,14 @@ def export_normalized_model(
     adapter: NormalizedModelAdapter | None = None,
     *,
     include_vertex_colors: bool = False,
+    source_uv_channels: tuple[int, ...] = (),
 ) -> NormalizedExport:
+    source_uv_channels = _validated_source_uv_channels(source_uv_channels)
     _validate_skeleton(skeleton_json)
 
     builder = GlbBuilder()
     builder.include_vertex_colors = include_vertex_colors
+    builder.source_uv_channels = source_uv_channels
     bones = skeleton_json["bones"]
     root_idx = int(skeleton_json["rootIndex"])
     standard_bones: dict[str, int] = {}
@@ -505,6 +526,8 @@ def export_normalized_model(
             )
             emitted_mesh_paths.add(mesh_path)
             morphs, mesh_name, mesh_node = result
+            if hasattr(source_adapter, "adapt_exported_renderer"):
+                source_adapter.adapt_exported_renderer(renderer, mesh_node, builder)
             mesh_names.append(mesh_name)
             for crc_value, target_index, name in morphs:
                 morph_targets[crc_value].append((mesh_node, target_index, name))
@@ -953,6 +976,20 @@ def _add_normalized_renderer(
             "VEC2",
             COMPONENT_FLOAT,
             target=34962,
+        )
+    for channel in _validated_source_uv_channels(getattr(builder, "source_uv_channels", ())):
+        values = getattr(decoded, f"m_UV{channel}", None)
+        if values is None or len(values) == 0:
+            continue
+        if len(values) != len(positions):
+            raise ValueError(f"{mesh.m_Name}: source UV{channel} count differs from position count")
+        width = len(values[0])
+        if width not in (2, 3, 4) or any(len(value) != width for value in values):
+            raise ValueError(f"{mesh.m_Name}: source UV{channel} must have consistent 2, 3 or 4 components")
+        # Source channels can encode Shader controls rather than texture UVs.
+        # Preserve their float32 values independently from glTF texture UVs.
+        attributes[f"_SOURCE_UV{channel}"] = builder.add_accessor(
+            values, f"VEC{width}", COMPONENT_FLOAT, target=34962,
         )
     if getattr(builder, "include_vertex_colors", False) and decoded.m_Colors:
         if len(decoded.m_Colors) != len(positions):
