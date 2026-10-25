@@ -25,6 +25,41 @@ from converter.convert_bangdream import clean_game_output
 
 
 class BangDreamManifestTests(unittest.TestCase):
+    def test_monthly_head_is_skipped_by_prefab_identity_before_export(self):
+        bundle = SimpleNamespace(kind='head')
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(bangdream, '_package_name', return_value='000_cos_monthly_2023_3'), \
+                patch.object(bangdream, '_load_normalized') as normalized, \
+                patch.object(bangdream, 'export_glb') as export:
+            for color in (0, 1, 4):
+                self.assertIsNone(bangdream.convert_one(
+                    Path('renamed-source'), Path(tmp), expected_role='head',
+                    color_type=color, loaded_bundle=bundle))
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+            normalized.assert_not_called()
+            export.assert_not_called()
+        self.assertTrue(bangdream.should_export_component('000_cos_monthly_2023_3', 'body'))
+        self.assertTrue(bangdream.should_export_component('001_cos_live_default', 'head'))
+
+    def test_incremental_monthly_config_excludes_previous_head(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            name = '000_cos_monthly_2023_3'
+            package = root / name
+            package.mkdir()
+            (package / 'body.glb').write_bytes(b'body')
+            config = bangdream.build_package_config(name, [
+                {'role': 'head', 'model': 'head.glb'},
+                {'role': 'body', 'model': 'body.glb'},
+            ])
+            (package / 'config.json').write_text(json.dumps(config), encoding='utf-8')
+            with patch.object(bangdream, 'discover_bundle_inputs', return_value=[(Path('source'), 'head')]), \
+                    patch.object(bangdream, 'convert_one', return_value=None):
+                result = bangdream.convert_all(root / 'input', root)
+            self.assertEqual([c['role'] for c in result[0]['components']], ['body'])
+            saved = json.loads((package / 'config.json').read_text(encoding='utf-8'))
+            self.assertEqual([c['role'] for c in saved['components']], ['body'])
+
     def test_clean_rebuilds_entire_game_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp)

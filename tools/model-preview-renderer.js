@@ -28,8 +28,11 @@ export async function initialize() {
       shaderErrors.length = 0;
       character.clear({ rememberFace: false });
       // A still image needs the idle pose and Behavior, not simulation resources.
-      const { physics, ...component } = model.component;
-      if (!await character.load([{ ...model, component }], '/packages/')) throw new Error('Model did not load');
+      const entries = (model.parts ?? [model]).map(entry => {
+        const { physics, ...component } = entry.component;
+        return { ...entry, component, group: component.group };
+      });
+      if (!await character.load(entries, '/packages/')) throw new Error('Model did not load');
       character.update(0);
       character.root.updateMatrixWorld(true);
       character.root.traverse(node => { if (node.isSkinnedMesh) node.skeleton.update(); });

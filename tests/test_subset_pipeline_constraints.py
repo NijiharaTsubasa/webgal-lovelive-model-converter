@@ -168,6 +168,7 @@ class BangDreamSubsetTests(unittest.TestCase):
                 source.touch()
                 with patch.object(sys, "argv", argv), \
                      patch("converter.convert_bangdream.convert_all", side_effect=convert_models), \
+                     patch("converter.convert_bangdream.convert_variants"), \
                      patch("converter.convert_bangdream.package_existing_motions") as package:
                     convert_bangdream()
                 package.assert_not_called()

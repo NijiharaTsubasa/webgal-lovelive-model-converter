@@ -48,7 +48,7 @@ test('native expression cascade commits on its last step and preserves compatibl
   const rendererSource = path.dirname(createRequire(import.meta.url).resolve('webgal-lovelive-gltf-renderer'));
   const vite = await createServer({ logLevel: 'silent',
     resolve: { alias: { 'webgal-lovelive-gltf-renderer': rendererSource } },
-    server: { host: '127.0.0.1', port: 0 } });
+    server: { host: '127.0.0.1', port: 0, hmr: false } });
   await vite.listen();
   t.after(() => vite.close());
   const browser = await chromium.launch({ headless: true });
@@ -58,7 +58,7 @@ test('native expression cascade commits on its last step and preserves compatibl
   const failures = [];
   page.on('pageerror', error => failures.push(error.message));
   page.on('console', message => { if (message.type() === 'error') failures.push(message.text()); });
-  await page.route('**/src/main.js', async route => {
+  await page.route(url => url.pathname === '/src/main.js', async route => {
     const response = await route.fetch();
     const body = await response.text();
     await route.fulfill({ response, body: `${body}\n

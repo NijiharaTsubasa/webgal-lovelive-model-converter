@@ -51,6 +51,8 @@ from ..common.normalized_model import (
 from ..common.unity import game_object_transform
 from .model_adapter import BangDreamModelAdapter
 from .face_source import load_face_controller
+from .previews import BodyPreviews
+from .metadata import ModelDescriptions
 
 
 UNITY_VERSION = "2021.3.22f1"
@@ -451,7 +453,7 @@ def _package_name(bundle: BundleAssets) -> str:
     raise ValueError(f"No canonical prefab container path in {bundle.path.name}")
 
 
-def export_glb(bundle: BundleAssets, normalized_skeleton: dict[str, Any] | None = None) -> Any:
+def export_glb(bundle: BundleAssets, normalized_skeleton: dict[str, Any] | None = None, *, color_type: int = 0) -> Any:
     """Reuse the common normalized exporter to write a head/body GLB.
 
     Bang Dream's characters need to pass through Unity-side normalisation
@@ -474,7 +476,7 @@ def export_glb(bundle: BundleAssets, normalized_skeleton: dict[str, Any] | None 
     if root_pointer is None:
         raise ValueError(f"No prefab found in {bundle.path.name}")
 
-    adapter = BangDreamModelAdapter(bundle.env, role=bundle.kind, prefab_pointer=root_pointer)
+    adapter = BangDreamModelAdapter(bundle.env, color_type=color_type, role=bundle.kind, prefab_pointer=root_pointer)
     exported = export_normalized_model(
         bundle.env,
         root_pointer,
@@ -1119,16 +1121,22 @@ def build_component_config(
 def build_package_config(
     package_name: str,
     components: list[dict[str, Any]],
+    descriptions: ModelDescriptions | None = None,
+    defaults: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compose a self-contained manifest for one logical model directory."""
+    roles = {component['role'] for component in components}
+    description = descriptions.get(package_name, roles) if descriptions else None
     return {
         "components": [
             order_model_component({
                 "type": "model",
                 "name": package_name,
-                "group": "garupa",
                 "motionGroup": "garupa",
                 **component,
+                "group": model_group(package_name),
+                **(defaults or {}),
+                **({'description': description} if description is not None else {}),
             })
             for component in components
         ],
@@ -1172,25 +1180,43 @@ def _load_normalized(
     return None
 
 
+def model_group(package_name: str) -> str:
+    return "garupa-michelle" if package_name.startswith("015_cos_") else "garupa"
+
+
+def should_export_component(package_name: str, role: str) -> bool:
+    return not (role == "head" and package_name.startswith("000_cos_"))
+
+
 def convert_one(
     bundle_path: Path,
     output_dir: Path,
     baked_dir: Path | None = None,
     occupied_roles: set[tuple[str, str]] | None = None,
     expected_role: str | None = None,
-) -> tuple[str, dict[str, Any]]:
+    *,
+    color_type: int = 0,
+    loaded_bundle: BundleAssets | None = None,
+) -> tuple[str, dict[str, Any]] | None:
     """Convert one AssetBundle to one entry in a model directory.
 
     Writes `<role>.glb` into `<output_dir>/<package_name>/` and returns the
     package name plus its manifest entry. The caller aggregates entries and
     writes exactly one config.json after duplicate-role validation.
+    Monthly costume head bundles return None before model export.
     """
     if expected_role not in {"head", "body"}:
         raise ValueError("Bang Dream component role must come from head/ or costume/")
-    bundle = load_bundle_assets(bundle_path, expected_role=expected_role)
+    if isinstance(color_type, bool) or not isinstance(color_type, int) or not 0 <= color_type <= 4:
+        raise ValueError("Color type must be the original enum in 0..4")
+    bundle = loaded_bundle if loaded_bundle is not None else load_bundle_assets(bundle_path, expected_role=expected_role)
     bundle.kind = expected_role
 
-    package_name = _package_name(bundle)
+    source_name = _package_name(bundle)
+    if not should_export_component(source_name, expected_role):
+        print(f"[bangdream] {source_name}: skip monthly costume head")
+        return None
+    package_name = f"{source_name}_another{color_type}" if color_type else source_name
     role_key = (package_name, bundle.kind)
     if occupied_roles is not None:
         if role_key in occupied_roles:
@@ -1199,8 +1225,8 @@ def convert_one(
                 "refusing to overwrite the first source"
             )
         occupied_roles.add(role_key)
-    normalized = _load_normalized(baked_dir, package_name, bundle)
-    exported = export_glb(bundle, normalized)
+    normalized = _load_normalized(baked_dir, source_name, bundle)
+    exported = export_glb(bundle, normalized, color_type=color_type) if color_type else export_glb(bundle, normalized)
     physics = extract_model_physics(bundle.env, exported)
     behaviors = _avatar_behavior_declarations(bundle, normalized, exported)
     if bundle.kind == "head":
@@ -1288,13 +1314,15 @@ def _load_existing_components(
                 not isinstance(component, dict)
                 or component.get("type") != "model"
                 or component.get("name") != package_dir.name
-                or component.get("group") != "garupa"
+                or component.get("group") != model_group(package_dir.name)
                 or component.get("motionGroup") != "garupa"
             ):
                 raise ValueError(f"existing Bang Dream config has an invalid model entry: {config_path}")
             role = component.get("role") if isinstance(component, dict) else None
             if role not in {"head", "body"}:
                 raise ValueError(f"existing Bang Dream config has invalid role {role!r}: {config_path}")
+            if not should_export_component(package_dir.name, role):
+                continue
             if role in by_role:
                 raise ValueError(f"existing Bang Dream config repeats role {role!r}: {config_path}")
             model = component.get("model")
@@ -1343,6 +1371,10 @@ def convert_all(
         return []
     output_dir.mkdir(parents=True, exist_ok=True)
     components_by_name = _load_existing_components(output_dir)
+    previews = BodyPreviews(input_dir)
+    descriptions = ModelDescriptions(input_dir)
+    from .default_motion import DefaultMotions
+    defaults = DefaultMotions(input_dir, baked_dir)
     occupied_roles: set[tuple[str, str]] = set()
     for entry, expected_role in inputs:
         result = convert_one(
@@ -1352,8 +1384,14 @@ def convert_all(
             occupied_roles,
             expected_role,
         )
+        if result is None:
+            continue
         package_name, component = result
         role = component["role"]
+        if role == "body":
+            preview = previews.get(package_name)
+            if preview is not None:
+                component["preview"] = preview
         package_components = components_by_name.setdefault(package_name, {})
         package_components[role] = component
         print(f"[bangdream] {entry.name} -> {package_name}/{component['model']} "
@@ -1366,7 +1404,7 @@ def convert_all(
             by_role.values(),
             key=lambda component: role_order[component["role"]],
         )
-        config = build_package_config(package_name, components)
+        config = build_package_config(package_name, components, descriptions, defaults.get(package_name))
         package_dir = output_dir / package_name
         (package_dir / "config.json").write_text(
             json.dumps(config, ensure_ascii=False, indent=2) + "\n",

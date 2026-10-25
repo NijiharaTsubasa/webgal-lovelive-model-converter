@@ -114,13 +114,17 @@ npm run convert:full:llas
 
 ### 3. BanG Dream
 
-当前 WebGAL LoveLive专版**暂不支持**加载 BanG Dream 的头身分离 3D 模型，只支持其输出的动作，且游戏运行时仓库对其的支持仍处于极早期状态。目前仅供在本仓库的预览器中预览。
-
 #### 3.1 准备输入
 
-将 BanG Dream 数据包的 `star3d` 目录中的所有内容复制到 `input_bangdream` 下，保留其中的 `head`、`costume`、`motions` 目录结构及动作的原资源路径。
+将解密后的 BanG Dream 数据包的 `star3d` 目录中的所有内容复制到 `input_bangdream` 下，保留其中的 `head`、`costume`、`motions` 目录结构及动作的原资源路径。
 
-#### 3.2 运行转换
+#### 3.2 准备可选输入
+
+转换器会使用以下可选输入生成身体组件的预览图，并根据 masterdata 生成模型说明，保留其中的角色名、服装名和配色名。缺少对应输入时，相应信息留空，不影响转换。头部预览图仍由 5.2 节的指令生成。
+
+将解密后的 BanG Dream 数据包的 `thumb/costume3ddress` 目录复制到 `input_bangdream` 下，保留目录原名称。将解密后的 BanG Dream masterdata 也放到 `input_bangdream` 下，重命名为 `masterdata.pb`。
+
+#### 3.3 运行转换
 
 ```powershell
 npm run convert:full:bangdream
@@ -128,7 +132,14 @@ npm run convert:full:bangdream
 
 模型输出在 `output_packages/bangdream`，动作输出在 `output_packages/motion/garupa`。
 
-将需要的动作从 `output_packages/motion/garupa` 复制到 WebGAL LoveLive专版的 `3d/motion/garupa`，建议保留相对目录结构，方便编辑时查找。模型暂不支持加载。
+模型可直接以目录为单位复制到 WebGAL LoveLive专版的 `3d/figure` 目录下。请同时将 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime) 的 `packages/garupa_runtime` 目录复制到 `3d/runtime` 目录下，模型方可正常工作。
+
+将需要的动作从 `output_packages/motion/garupa` 复制到 WebGAL LoveLive专版的 `3d/motion/garupa`，建议保留相对目录结构，方便编辑时查找。
+
+`000` 月度服装输出为身体包，可搭配角色头部使用；生成缩略图时搭配香澄的 `001_cos_live_default` 头部。
+
+模型转换包含异色服装，包名为原服装名加 `_another1` 至 `_another4`。头部外观也有变化时导出头身包，仅身体变化时导出身体包。
+
 
 ### 4. 幻日夜羽：蜃景努玛梓
 
@@ -186,6 +197,10 @@ npm run preview:models
 ```powershell
 npm run preview:models -- --browser msedge
 ```
+
+一体化模型和头部组件的预览图写入 `config.json` 的 `preview`。BanG Dream 仅身体包的预览图保存为 `output_packages/bangdream/body_only_thumbnails/包名.webp`。
+
+仅身体包生成预览时，优先搭配异色服装的原色头部，其次使用同角色的 `cos_base`、`cos_live_default` 头部；`000` 月度服装搭配香澄的 `001_cos_live_default` 头部。用于搭配的模型包需保留在输出目录中。
 
 只为尚未生成预览图的模型补图时，使用：
 
@@ -316,7 +331,7 @@ npm run export:garupa-live2d
 | --- | --- | --- |
 | `tools/install-test-browser.mjs` | 安装测试所需 Chromium，默认存放在项目的 `node_modules` 中。 | `npm run test:install-browser` |
 | `tools/export-garupa-live2d.mjs` | 将 `.mtn_exp` 中声明的参数动作和表情打成可供 WebGAL 使用的资源包。 | `npm run export:garupa-live2d` |
-| `tools/generate-model-previews.mjs` | 渲染一体化模型的透明上半身 WebP 缩略图，写入模型配置的 `preview`。需要安装上面的 Chromium 并准备模型对应的 runtime。 | `npm run preview:models`；可加 `-- --output <输出目录>`，`--missing` 只补齐缺图模型，或 `--sync <游戏模型目录>` 将缩略图同步到同名模型；`--browser msedge` / `chrome` 可使用本机已安装的浏览器 |
+| `tools/generate-model-previews.mjs` | 渲染模型的透明上半身 WebP 缩略图；一体化模型和头部组件写入配置的 `preview`，BanG Dream 仅身体包另存 WebP。需要安装上面的 Chromium 并准备模型对应的 runtime。 | `npm run preview:models`；可加 `-- --output <输出目录>`，`--missing` 只补齐缺图模型，或 `--sync <游戏模型目录>` 将配置中的缩略图同步到同名模型；`--browser msedge` / `chrome` 可使用本机已安装的浏览器 |
 | `tools/run-browser-tests.mjs` | 运行 JS 和浏览器测试，一次运行一个测试文件。与上面的安装脚本使用相同的浏览器路径。 | `npm run test:js` 或 `npm run test:integration` |
 | `tools/validate-resource-packages.mjs` | 扫描输出目录，检查配置引用的文件、模型表情、物理数据，以及材质引用的 Shader 和模型引用的 Behavior。支持独立 runtime 目录、参数动作与表情包。 | `node tools/validate-resource-packages.mjs --output <输出目录> --runtime <runtime的packages目录>` |
 | `tools/validate-all-motions.mjs` | 扫描通用动作包，检查 JSON 或二进制正文，并在两套不同的模拟骨架上验证采样和停止后的骨骼状态恢复。 | `node tools/validate-all-motions.mjs --root <输出目录>`；默认读取 `output_packages` |

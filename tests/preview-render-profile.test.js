@@ -119,3 +119,45 @@ test('thumbnail renderer registers Yohane profiles and prepares after camera fra
   assert.match(result,/^data:image\/webp;base64,/);assert.equal(await page.evaluate(()=>window.__thumbnailPrepared),true);
   assert.deepEqual(failures,[]);
 });
+
+test('thumbnail head-body selection uses both parts and the integrated torso framing', {timeout:30000}, async t=>{
+  const vite=await createServer({configFile:false,logLevel:'silent',server:{host:'127.0.0.1',port:0},plugins:[{
+    name:'thumbnail-composition-fixture',enforce:'pre',
+    resolveId(id){if(id==='/renderer/character-renderer.js')return '\0thumbnail-character';},
+    load(id){if(id==='\0thumbnail-character')return `
+      import * as THREE from 'three';
+      export class CharacterRenderer {
+        constructor({renderer,scene,camera}){Object.assign(this,{renderer,scene,camera});this.resourcePackages={register(){}};window.thumbnailLoads=[];window.thumbnailFrames=[];}
+        setPhysicsEnabled(){}
+        clear(){if(this.root){this.root.traverse(n=>{n.geometry?.dispose();n.material?.dispose();});this.root.removeFromParent();this.root=null;}}
+        async load(entries){window.thumbnailLoads.push(entries);this.root=new THREE.Group();this.scene.add(this.root);
+          const head=new THREE.Object3D();head.name='Head';head.position.y=1.5;this.root.add(head);
+          const hips=new THREE.Object3D();hips.name='Hips';hips.position.y=.8;this.root.add(hips);
+          const add=role=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(role==='head'?.35:.5,role==='head'?.35:.65,.2),new THREE.MeshBasicMaterial({color:role==='head'?0xffaa99:0x3399cc}));mesh.position.y=role==='head'?1.55:1.05;this.root.add(mesh);};
+          for(const entry of entries){if(entry.component.role==='integrated'){add('head');add('body');}else add(entry.component.role);}
+          return {root:this.root};}
+        update(){} prepareFrame(){} async prepareRenderResources(){}
+        render(){window.thumbnailFrames.push([this.camera.left,this.camera.right,this.camera.top,this.camera.bottom,...this.camera.position.toArray()]);this.renderer.render(this.scene,this.camera);}
+      }
+    `;}
+  }]});
+  await vite.listen();t.after(()=>vite.close());
+  const browser=await chromium.launch({headless:true});t.after(()=>browser.close());
+  const page=await browser.newPage();
+  await page.route('**/packages/runtime/**',route=>route.fulfill({status:404,body:''}));
+  await page.route('**/thumbnail-fixture',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html></html>'}));
+  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/thumbnail-fixture`);
+  const result=await page.evaluate(async()=>{
+    const {initialize}=await import('/tools/model-preview-renderer.js');
+    const thumbnail=await initialize();
+    const entry=role=>({name:role,basePath:'pair/',component:{type:'model',role,model:role+'.glb',group:'garupa',physics:{sentinel:true}}});
+    const integrated=await thumbnail.render(entry('integrated'));
+    const composed=await thumbnail.render({...entry('head'),parts:[entry('head'),entry('body')]});
+    return {integrated,composed,loads:window.thumbnailLoads,frames:window.thumbnailFrames};
+  });
+  assert.equal(result.composed,result.integrated,'the same whole upper-body geometry must have identical framing');
+  assert.deepEqual(result.loads[1].map(entry=>entry.component.role),['head','body']);
+  assert.ok(result.loads[1].every(entry=>entry.group==='garupa' && !('physics' in entry.component)));
+  assert.ok(result.frames.length>=4,'both thumbnails retain the two-frame capture');
+  assert.deepEqual(result.frames[0],result.frames.at(-1));
+});
