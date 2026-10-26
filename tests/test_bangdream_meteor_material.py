@@ -1,5 +1,4 @@
 import unittest
-import struct
 from io import BytesIO
 from types import SimpleNamespace as Object
 from unittest.mock import patch
@@ -35,9 +34,6 @@ class Texture:
         self.m_Width, self.m_Height = (64, 32) if mips > 1 else (2, 2)
         self.m_TextureSettings = Object(m_WrapU=wrap_u, m_WrapV=wrap_v, m_FilterMode=1, m_Aniso=0)
         self._image = image or Image.new('RGBA', (2, 2), (17, 43, 91, 255))
-
-    def get_image_data(self):
-        return bytes.fromhex('fcfdffffffffffff') + struct.pack('<4H', 4369, 11051, 23387, 65535)
 
     @property
     def image(self):
@@ -89,16 +85,13 @@ class MeteorMaterialTests(unittest.TestCase):
         self.assertEqual(result['extras']['textures'], {'_MainTex_with_sampler_MainTex': 0})
         self.assertEqual(len(builder.document['images']), 1)
         extras = builder.document['textures'][0]['extras']
-        self.assertEqual(extras['colorSpace'], 'srgb')
-        self.assertEqual(extras['rawMipChain']['format'], 'rgba8')
-        self.assertEqual(extras['rawMipChain']['compression'], 'deflate')
-        self.assertEqual(len(extras['rawMipChain']['levels']), 1)
+        self.assertEqual(extras, {'colorSpace': 'srgb'})
         image = builder.document['images'][0]
         view = builder.document['bufferViews'][image['bufferView']]
         png = bytes(builder.binary[view['byteOffset']:view['byteOffset'] + view['byteLength']])
         self.assertEqual(Image.open(BytesIO(png)).getpixel((0, 0)), (17, 43, 91, 255))
 
-    def test_shared_source_chain_is_embedded_once_and_keeps_patch_association(self):
+    def test_shared_source_image_is_embedded_once(self):
         builder = GlbBuilder()
         exporter = MeteorMaterialExporter(builder)
         source = Texture()
@@ -106,8 +99,28 @@ class MeteorMaterialTests(unittest.TestCase):
             exporter.adapt_material(material('Meteor/MeteorShaderOffset', keywords=[],
                 textures={'_MainTex': source}), {})
         self.assertEqual(len(builder.document['textures']), 1)
-        self.assertEqual(len(builder.document['bufferViews']), 2)  # PNG + original raw level
-        self.assertIs(exporter.texture_sources[0], source)
+        self.assertEqual(len(builder.document['bufferViews']), 1)
+
+    def test_regular_multilevel_texture_exports_png_without_decoding_source_levels(self):
+        class OrdinaryTexture(Texture):
+            @property
+            def image(self):
+                return self._image
+
+            def get_image_data(self):
+                raise AssertionError('Ordinary texture export must use its PNG image')
+
+        source = OrdinaryTexture(mips=6)
+        source.m_ColorSpace = 0
+        source.m_TextureSettings.m_Aniso = 2
+        builder = GlbBuilder()
+        MeteorMaterialExporter(builder).adapt_material(material('Meteor/MeteorShaderOffset',
+            keywords=[], textures={'_MainTex': source}), {})
+        self.assertEqual(len(builder.document['bufferViews']), 1)
+        self.assertEqual(builder.document['textures'][0]['extras'],
+                         {'colorSpace': 'linear', 'anisotropy': 2})
+        self.assertEqual(builder.document['samplers'][0]['minFilter'], 9985)
+        self.assertEqual(builder.document['images'][0]['mimeType'], 'image/png')
 
     def test_disabled_outline_keeps_depth_reads_and_only_forward_can_remove_width(self):
         result = {}
@@ -188,7 +201,8 @@ class MeteorMaterialTests(unittest.TestCase):
         self.assertIs(source.object_reader, original_reader)
         self.assertEqual(builder.document['samplers'][0]['minFilter'], 9729)
         self.assertTrue(all(t['extras']['anisotropy'] == 2 for t in builder.document['textures']))
-        self.assertTrue(all('rawMipChain' not in t['extras'] for t in builder.document['textures']))
+        self.assertTrue(all(t['extras'] == {'colorSpace': 'srgb', 'anisotropy': 2}
+                            for t in builder.document['textures']))
         for proxy in exporter._matcaps.values():
             self.assertEqual(proxy.m_MipCount, 1)
             self.assertIsNot(proxy.object_reader.assets_file, source.object_reader.assets_file)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import struct
-import zlib
 from io import BytesIO
 from numbers import Integral
 from pathlib import Path
@@ -177,37 +176,6 @@ class GlbBuilder:
         index = len(self.document["textures"]) - 1
         self.textures[key] = index
         return index
-
-    def add_raw_mip_chain(self, texture_index: int, chain: dict, *, compression: str | None = None) -> None:
-        """Attach explicit raw texture levels; format never implies a color space."""
-        if isinstance(texture_index, bool) or not isinstance(texture_index, int) or not 0 <= texture_index < len(self.document['textures']):
-            raise ValueError('Invalid raw mip texture index')
-        size = {'rgba8': 4, 'rgba16f': 8}.get(chain.get('format'))
-        levels = chain.get('levels')
-        if size is None or not isinstance(levels, list) or not levels:
-            raise ValueError('Raw mip chain requires a supported format and nonempty levels')
-        if compression not in (None, 'deflate'):
-            raise ValueError('Unsupported raw mip compression')
-        extras = self.document['textures'][texture_index].setdefault('extras', {})
-        if 'rawMipChain' in extras:
-            raise ValueError('Raw mip chain already attached')
-        previous = None
-        # Validate everything before appending any binary data.
-        for level in levels:
-            w, h, data = level.get('width'), level.get('height'), level.get('data')
-            if any(isinstance(v, bool) or not isinstance(v, int) or v <= 0 for v in (w, h)):
-                raise ValueError('Invalid raw mip dimensions')
-            if previous is not None and (previous == (1, 1) or (w, h) != tuple(max(1, v // 2) for v in previous)):
-                raise ValueError('Raw mip dimensions do not follow original level order')
-            if not isinstance(data, (bytes, bytearray)) or len(data) != w * h * size:
-                raise ValueError('Invalid raw mip byte count')
-            previous = (w, h)
-        extras['rawMipChain'] = {'format': chain['format'], 'levels': [
-            {'bufferView': self.add_view(zlib.compress(level['data'], 6) if compression else level['data']),
-             'width': level['width'], 'height': level['height']}
-            for level in levels]}
-        if compression:
-            extras['rawMipChain']['compression'] = compression
 
     def add_material(self, pointer: Any) -> int:
         if not pointer:

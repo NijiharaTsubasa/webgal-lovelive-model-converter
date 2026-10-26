@@ -9,7 +9,7 @@ from converter.common.unity import object_id
 from .meteor_material_mapping import MaterialCategory
 from .meteor_passes import SOURCE_CONTRACTS, resolve_meteor_passes
 from .meteor_source import material_snapshot
-from .meteor_texture import extract_matcap_image, extract_raw_mip_chain
+from .meteor_texture import extract_matcap_image
 from .meteor_uniform_data import UNIFORM_DATA
 from .meteor_uniforms import resolve_meteor_uniforms
 
@@ -57,9 +57,6 @@ class MeteorMaterialExporter:
     def __init__(self, builder):
         self.builder = builder
         self._matcaps = {}
-        self._raw_mips = set()
-        # Conversion-time association for auditing/patching an existing GLB.
-        self.texture_sources = {}
         self.diagnostics = []
 
     def adapt_material(self, source_material, gltf_material):
@@ -124,10 +121,6 @@ class MeteorMaterialExporter:
             if binding['type'] != 'sampler2D':
                 raise ValueError(f'Unsupported actual material sampler type {binding["type"]}')
             texture_index = self.builder.add_image(texture)
-            self.texture_sources[texture_index] = texture
-            if name != '_MatCapMap' and texture_index not in self._raw_mips:
-                self.builder.add_raw_mip_chain(texture_index, extract_raw_mip_chain(texture), compression='deflate')
-                self._raw_mips.add(texture_index)
             exported[uniform[1:]] = texture_index
 
         # Only runtime data is published. Property/default/type evidence and raw
