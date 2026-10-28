@@ -66,17 +66,11 @@ class ModelDescriptions:
         costume = self.costumes.get(source_name)
         if costume is None:
             return None
-        titles, owner = costume
+        titles, _ = costume
         title = '／'.join(titles)
         if color_type != 'original':
             color_name = self.colors.get((source_name, color_type))
             if color_name:
                 title = f'{title}（{color_name}）'
-        if character_id == 0 and owner == 0:
-            character = '通用'
-        else:
-            character = self.characters.get(owner or character_id)
-        if not character:
-            return None
         suffix = '（仅身体）' if roles == {'body'} else ''
-        return f'{character} / {title}{suffix}'
+        return f'{title}{suffix}'
