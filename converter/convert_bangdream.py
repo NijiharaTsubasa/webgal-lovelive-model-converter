@@ -19,13 +19,14 @@ def clean_game_output(output: Path) -> None:
         shutil.rmtree(output)
 
 
-def convert_variants(input_root: Path, output_root: Path, baked_root: Path) -> None:
+def convert_variants(input_root: Path, output_root: Path, baked_root: Path,
+                     *, overwrite: bool = False) -> None:
     jobs = discover_variant_jobs(input_root)
     count = sum(len(job["body"]) for job in jobs)
     print(f"[bangdream] 异色模型: {count} 个包，{len(jobs)} 套服装", flush=True)
     failures = []
     for job in jobs:
-        result = convert_variant_job(job, output_root, baked_root)
+        result = convert_variant_job(job, output_root, baked_root, overwrite=overwrite)
         failures.extend(result["failures"])
     if output_root.exists():
         configs = sorted(path.relative_to(output_root).as_posix()
@@ -71,7 +72,7 @@ def main() -> None:
         clean_game_output(output_root.parent / "motion" / "garupa")
 
     convert_all(input_root, output_root, baked_root)
-    convert_variants(input_root, output_root, baked_root)
+    convert_variants(input_root, output_root, baked_root, overwrite=True)
     if motions:
         package_existing_motions(input_root, baked_root / "bangdream", output_root.parent / "motion" / "garupa")
 

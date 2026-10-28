@@ -154,8 +154,9 @@ _descriptions_by_root: dict[str, ModelDescriptions] = {}
 _defaults_by_root: dict[tuple[str, str | None], DefaultMotions] = {}
 
 
-def convert_variant_job(job: dict[str, Any], output_dir: Path, baked_dir: Path | None) -> dict[str, Any]:
-    """Convert missing alternate packages, leaving complete packages untouched."""
+def convert_variant_job(job: dict[str, Any], output_dir: Path, baked_dir: Path | None,
+                        *, overwrite: bool = False) -> dict[str, Any]:
+    """Export alternate packages, optionally rebuilding existing output."""
     output_dir = Path(output_dir)
     baked_dir = Path(baked_dir) if baked_dir is not None else None
     result: dict[str, Any] = {"name": job["name"], "generated": [], "skipped": [], "failures": []}
@@ -172,7 +173,7 @@ def convert_variant_job(job: dict[str, Any], output_dir: Path, baked_dir: Path |
         name = f"{job['name']}_another{index}"
         roles = ({"body", "head"} if index in job["head"] and job.get("head_path")
                  and should_export_component(job["name"], "head") else {"body"})
-        if _complete(output_dir / name, name, roles):
+        if not overwrite and _complete(output_dir / name, name, roles):
             config_path = output_dir / name / 'config.json'
             config = json.loads(config_path.read_text(encoding='utf-8'))
             if any(any(component.get(key) != value for key, value in default_fields.items())

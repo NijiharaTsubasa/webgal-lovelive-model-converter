@@ -9,6 +9,11 @@ def vector(x, y, z):
     return NS(x=x, y=y, z=z)
 
 
+def empty_box():
+    return NS(m_Min=vector(float("inf"), float("inf"), float("inf")),
+              m_Max=vector(-float("inf"), -float("inf"), -float("inf")))
+
+
 class Pointer:
     def __init__(self, value=None, *, index=None):
         self.value, self.index = value, index
@@ -90,20 +95,69 @@ class MeteorBoundsTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "references bone"):
                 attach_renderer_bounds(exported, [(renderer, 4)], role="body")
 
-    def test_original_empty_sentinel_keeps_its_index_without_a_fake_zero_box(self):
-        exported, renderer, _ = fixture()
-        renderer.m_Mesh.value.m_BonesAABB[0] = NS(
-            m_Min=vector(float("inf"), float("inf"), float("inf")),
-            m_Max=vector(-float("inf"), -float("inf"), -float("inf")),
-        )
+    def test_empty_bone_box_has_no_record_anchor_or_binding_matrix(self):
+        exported, renderer, calls = fixture()
+        renderer.m_Mesh.value.m_BonesAABB[0] = empty_box()
         attach_renderer_bounds(exported, [(renderer, 4)], role="head")
-        boxes = exported.builder.document["nodes"][4]["extras"]["meteorBounds"]["bones"]
-        self.assertEqual(len(boxes), 2)
-        self.assertEqual(boxes[0]["node"], "head:2")
-        self.assertTrue(boxes[0]["empty"])
-        self.assertNotIn("center", boxes[0])
-        self.assertNotIn("extents", boxes[0])
-        self.assertEqual(boxes[1]["center"], [-11, 22, 33])
+        nodes = exported.builder.document["nodes"]
+        boxes = nodes[4]["extras"]["meteorBounds"]["bones"]
+        self.assertEqual(boxes, [{"node": "head:1",
+            "bindMatrix": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1],
+            "center": [-11, 22, 33], "extents": [1, 2, 3]}])
+        self.assertNotIn("meteorBoundsAnchor", nodes[2].get("extras", {}))
+        self.assertEqual([p.index for p in calls], [1, 0])
+        self.assertEqual([p.index for p in renderer.m_Bones], [2, 1])
+
+    def test_mixed_boxes_keep_nonempty_source_order_and_values(self):
+        baseline, baseline_renderer, _ = fixture()
+        attach_renderer_bounds(baseline, [(baseline_renderer, 4)], role="body")
+        expected = baseline.builder.document["nodes"][4]["extras"]["meteorBounds"]["bones"]
+        exported, renderer, calls = fixture()
+        mesh = renderer.m_Mesh.value
+        mesh.m_BindPose.insert(1, object())
+        mesh.m_BonesAABB.insert(1, empty_box())
+        renderer.m_Bones.insert(1, Pointer(index=3))
+        attach_renderer_bounds(exported, [(renderer, 4)], role="body")
+        nodes = exported.builder.document["nodes"]
+        self.assertEqual(nodes[4]["extras"]["meteorBounds"]["bones"], expected)
+        self.assertNotIn("meteorBoundsAnchor", nodes[3].get("extras", {}))
+        self.assertEqual([p.index for p in calls], [2, 1, 0])
+
+    def test_empty_box_does_not_hide_null_bone_or_malformed_bounds(self):
+        exported, renderer, _ = fixture()
+        renderer.m_Mesh.value.m_BonesAABB[0] = empty_box()
+        renderer.m_Bones[0] = Pointer()
+        with self.assertRaisesRegex(ValueError, "null bone"):
+            attach_renderer_bounds(exported, [(renderer, 4)], role="body")
+        exported, renderer, _ = fixture()
+        renderer.m_Mesh.value.m_BonesAABB[0] = empty_box()
+        renderer.m_Mesh.value.m_BonesAABB[0].m_Max.x = 0
+        with self.assertRaisesRegex(ValueError, "Non-finite"):
+            attach_renderer_bounds(exported, [(renderer, 4)], role="body")
+
+    def test_root_binding_survives_when_its_bone_box_is_empty(self):
+        exported, renderer, calls = fixture()
+        renderer.m_RootBone = renderer.m_Bones[0]
+        renderer.m_Mesh.value.m_BonesAABB[0] = empty_box()
+        attach_renderer_bounds(exported, [(renderer, 4)], role="head")
+        nodes = exported.builder.document["nodes"]
+        bounds = nodes[4]["extras"]["meteorBounds"]
+        self.assertEqual(bounds["root"]["node"], "head:2")
+        self.assertEqual(nodes[2]["extras"]["meteorBoundsAnchor"], "head:2")
+        self.assertEqual([entry["node"] for entry in bounds["bones"]], ["head:1"])
+        self.assertEqual([p.index for p in calls], [1, 2])
+
+    def test_all_empty_bone_boxes_fail_before_publishing_renderer_bounds(self):
+        exported, renderer, calls = fixture()
+        renderer.m_Mesh.value.m_BonesAABB = [empty_box(), empty_box()]
+        with self.assertRaisesRegex(ValueError, "no nonempty bone boxes"):
+            attach_renderer_bounds(exported, [(renderer, 4)], role="body")
+        nodes = exported.builder.document["nodes"]
+        self.assertNotIn("meteorBounds", nodes[4].get("extras", {}))
+        self.assertEqual(calls, [])
+        self.assertNotIn("meteorBoundsAnchor", nodes[0].get("extras", {}))
+        self.assertNotIn("meteorBoundsAnchor", nodes[1].get("extras", {}))
+        self.assertNotIn("meteorBoundsAnchor", nodes[2].get("extras", {}))
 
 
 if __name__ == "__main__":

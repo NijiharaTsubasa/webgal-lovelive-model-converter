@@ -1,4 +1,4 @@
-"""Retain original renderer-local and per-bone boxes without merging them."""
+"""Export renderer-local bounds and ordered nonempty per-bone boxes."""
 from __future__ import annotations
 
 import math
@@ -81,7 +81,12 @@ def attach_renderer_bounds(exported, renderer_bindings, *, role):
         for pointer, box in zip(bones, boxes):
             if not pointer:
                 raise ValueError(f"{mesh.m_Name}: original bounds references a null bone")
-            entries.append({**binding(pointer), **_box(box)})
+            bounds = _box(box)
+            if bounds.get("empty"):
+                continue
+            entries.append({**binding(pointer), **bounds})
+        if not entries:
+            raise ValueError(f"{mesh.m_Name}: original bounds have no nonempty bone boxes")
         nodes[mesh_node].setdefault("extras", {})["meteorBounds"] = {
             "rendererId": str(source.object_reader.path_id),
             "root": binding(root),

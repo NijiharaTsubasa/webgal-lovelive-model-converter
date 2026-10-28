@@ -140,6 +140,8 @@ npm run convert:full:bangdream
 
 模型转换包含异色服装，包名为原服装名加 `_another1` 至 `_another4`。头部外观也有变化时导出头身包，仅身体变化时导出身体包。
 
+`npm run convert:bangdream` 会按当前转换规则重新生成输入中服装的原色和异色模型。`python -m converter.convert_bangdream --variants-only` 用于补齐缺失的异色包，保留已经完整存在的包。
+
 
 ### 4. 幻日夜羽：蜃景努玛梓
 

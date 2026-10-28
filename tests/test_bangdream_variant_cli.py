@@ -14,9 +14,9 @@ class VariantCliTests(unittest.TestCase):
                 patch.object(cli, "discover_bundle_inputs", return_value=[("body", "body")]), \
                 patch.object(cli, "discover_motion_bundles", return_value=[]), \
                 patch.object(cli, "convert_all", side_effect=lambda *args: calls.append("original")), \
-                patch.object(cli, "convert_variants", side_effect=lambda *args: calls.append("alternate")):
+                patch.object(cli, "convert_variants", side_effect=lambda *args, **kwargs: calls.append(("alternate", kwargs))) as variants:
             cli.main()
-        self.assertEqual(calls, ["original", "alternate"])
+        self.assertEqual(calls, ["original", ("alternate", {"overwrite": True})])
 
     def test_variants_only_does_not_convert_originals_or_motions(self):
         with patch("sys.argv", ["convert_bangdream", "--variants-only"]), \
@@ -56,3 +56,13 @@ class VariantCliTests(unittest.TestCase):
                         "failures": [{"name": "costume_another1", "error": "missing skeleton"}]}):
                 with self.assertRaisesRegex(RuntimeError, "costume_another1.*missing skeleton"):
                     cli.convert_variants(root, root, root)
+
+    def test_rebuild_request_reaches_every_variant_job(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            jobs = [{"body": [1]}, {"body": [2]}]
+            with patch.object(cli, "discover_variant_jobs", return_value=jobs), \
+                    patch.object(cli, "convert_variant_job", return_value={"failures": []}) as convert:
+                cli.convert_variants(root, root, root, overwrite=True)
+            self.assertEqual([call.kwargs for call in convert.call_args_list],
+                             [{"overwrite": True}, {"overwrite": True}])

@@ -119,6 +119,33 @@ class ColorVariantDiscoveryTests(unittest.TestCase):
 
 
 class ColorVariantConversionTests(unittest.TestCase):
+    def test_overwrite_reexports_existing_variant_instead_of_reusing_old_glb(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"
+            job = self.job(root)
+            job.update(body=[1], head=[])
+            name = job["name"] + "_another1"
+            self.complete(output, name, ["body"])
+            self.complete(output, job["name"], ["body"])
+            original = (output / job["name"] / "body.glb").read_bytes()
+
+            def convert(path, output_dir, baked_dir, **kwargs):
+                (output_dir / name / "body.glb").write_bytes(b"current exported model")
+                return name, {"role": "body", "model": "body.glb"}
+
+            with patch.object(variants, "load_bundle_assets", return_value=object()), \
+                    patch.object(variants, "_package_name", return_value=job["name"]), \
+                    patch.object(variants, "BodyPreviews", return_value=Mock(get=lambda name: None)), \
+                    patch.object(variants, "convert_one", side_effect=convert) as export:
+                result = variants.convert_variant_job(job, output, None, overwrite=True)
+            self.assertEqual(result["generated"], [name])
+            self.assertEqual(result["skipped"], [])
+            self.assertEqual(result["failures"], [])
+            export.assert_called_once()
+            self.assertEqual((output / name / "body.glb").read_bytes(), b"current exported model")
+            self.assertEqual((output / job["name"] / "body.glb").read_bytes(), original)
+
     def test_complete_alternate_receives_default_metadata_without_reexport(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
