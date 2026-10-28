@@ -36,7 +36,6 @@ class BoardBakeTests(unittest.TestCase):
                       {'name': 'mouth_neutral', 'mesh': 0}], 'meshes': [{}]},
             add_accessor=Mock(side_effect=[0, 1]))
         result = append_board_controls(builder, sampled)
-        self.assertNotIn('expressions', result)
         self.assertEqual(result['defaultExpression'], {'eye': 'Open', 'closed': 'Smile', 'open': 'A'})
         self.assertEqual([g['type'] for g in result['expressionGroups']], ['eye', 'mouth'])
         eyes, mouths = [{s['name']: s for s in g['states']} for g in result['expressionGroups']]

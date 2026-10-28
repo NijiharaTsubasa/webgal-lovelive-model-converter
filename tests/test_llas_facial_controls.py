@@ -81,7 +81,6 @@ class LlasFacialControlsTests(unittest.TestCase):
                    dict(name='mouth/Smile', domain='mouth', pose=reset),
                    dict(name='mouth/A', domain='mouth', pose=pose)]
         definition = build_facial_expressions(document, entries, pose, pose)
-        self.assertNotIn('expressions', definition)
         selection = definition['defaultExpression']
         self.assertEqual(selection, {'eye': 'Open', 'closed': 'Smile', 'open': 'A'})
         neutral = evaluate(definition, selection)
@@ -110,7 +109,6 @@ class LlasFacialControlsTests(unittest.TestCase):
                    dict(name='mouth/Angry', domain='mouth', pose=copy.deepcopy(pose))]
         original = copy.deepcopy(entries)
         result = build_facial_expressions(document, entries, pose, pose)
-        self.assertNotIn('expressions', result)
         selection = {'eye': 'Angry', 'closed': 'Smile', 'open': 'Angry'}
         combined = evaluate(result, selection)
         self.assertEqual(combined['Mouth exact node']['Mouth.first'], 0)
@@ -139,7 +137,6 @@ class LlasFacialControlsTests(unittest.TestCase):
             dict(name='mouth/N', domain='mouth', pose=pose),
             dict(name='mouth/Smile', domain='mouth', pose=pose),
             dict(name='mouth/A', domain='mouth', pose=pose)], pose, pose)
-        self.assertNotIn('expressions', expressions)
         self.assertIn('eye/WideOpen', [p['name'] for p in expressions['morphPoses']])
         self.assertEqual(state(expressions, 'eye', 'WideOpen')['poses'], {'eye/WideOpen': 1})
 

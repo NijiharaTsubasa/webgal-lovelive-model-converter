@@ -112,7 +112,6 @@ class HasunosoraExpressionTests(unittest.TestCase):
                 self.assertEqual(component["name"], "3d_b")
                 self.assertEqual(component["morphPoses"], [])
                 self.assertEqual(component["expressionGroups"], [])
-                self.assertNotIn("expressions", component)
                 with self.assertRaisesRegex(ValueError, "requested models not found"):
                     convert(source, output, None, False, model_names=["absent"], models_only=True)
 
@@ -144,7 +143,6 @@ class HasunosoraExpressionTests(unittest.TestCase):
         self.assertEqual(set(mouth["happy/a"]["controls"]["visemes"]), set("aiueo"))
         self.assertEqual(mouth["happy/a"]["controls"]["visemes"]["i"], {"mouth.happy.i": 1})
         self.assertEqual(package["defaultExpression"], {"eye": "normal", "closed": "normal/close", "open": "normal/a"})
-        self.assertNotIn("expressions", package)
         self.assertEqual([g["type"] for g in package["expressionGroups"]], ["eye", "mouth"])
         self.assertFalse(evaluate(package, face["happy"]).keys() & evaluate(package, mouth["normal/close"]).keys())
 

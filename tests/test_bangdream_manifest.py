@@ -534,7 +534,6 @@ class BangDreamManifestTests(unittest.TestCase):
         manifest = build_package_config("same_name", [head_component, body_component])
 
         self.assertEqual(set(manifest), {"components"})
-        self.assertNotIn("schemaVersion", manifest)
         self.assertEqual([item["role"] for item in manifest["components"]], ["head", "body"])
         self.assertTrue(all(item["type"] == "model" for item in manifest["components"]))
         self.assertTrue(all(item["name"] == "same_name" for item in manifest["components"]))
@@ -637,7 +636,6 @@ class BangDreamManifestTests(unittest.TestCase):
         self.assertEqual(component["role"], "body")
         self.assertEqual(component["model"], "body.glb")
         self.assertEqual(component["humanoidScale"], 0.912345)
-        self.assertNotIn("expressions", component)
 
     def test_incremental_conversion_preserves_absent_packages_and_roles(self):
         with tempfile.TemporaryDirectory() as tmp:

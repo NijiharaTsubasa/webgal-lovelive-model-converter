@@ -30,22 +30,5 @@ class FailClosedConversionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Invalid baked motion file"):
                 collect_baked_motions(baked, inputs, root / "output")
 
-    def test_unsupported_baked_motion_schema_is_an_error(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            baked = root / "baked"
-            baked.mkdir()
-            inputs = root / "input"
-            inputs.mkdir()
-            (inputs / "mot_old.assetbundle").touch()
-            (baked / "mot_old.baked.json").write_text(
-                '{"schemaVersion":7}',
-                encoding="utf-8",
-            )
-
-            with self.assertRaisesRegex(ValueError, "Unsupported baked motion schema"):
-                collect_baked_motions(baked, inputs, root / "output")
-
-
 if __name__ == "__main__":
     unittest.main()

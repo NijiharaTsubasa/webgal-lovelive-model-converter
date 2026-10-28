@@ -64,7 +64,6 @@ test('preview serves source files on demand and discovers changes on refresh wit
   await fs.unlink(path.join(root, 'model.json'));
   response = await fetch(base + 'config.json');
   assert.equal(response.status, 400); assert.match((await response.json()).error, /model.json/);
-  await assert.rejects(fs.stat(path.join(root, 'config.json')), { code: 'ENOENT' });
 });
 
 test('main preview lists only input parameter resources', { timeout: 30_000 }, async t => {

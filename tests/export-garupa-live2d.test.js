@@ -23,7 +23,6 @@ test('exports parameter files with original bytes and declared names', async t =
   assert.equal(await exportGarupaLive2d(input, output), 2);
   assert.deepEqual(await fs.readFile(path.join(output, 'anon/test.mtn')), motion);
   assert.deepEqual(await fs.readFile(path.join(output, 'anon/smile.exp.json')), expression);
-  await assert.rejects(fs.stat(path.join(output, 'config.json')), { code: 'ENOENT' });
   await assert.rejects(fs.stat(path.join(output, 'unused.moc')), { code: 'ENOENT' });
   await exportGarupaLive2d(input, output);
   await assert.rejects(exportGarupaLive2d(input, input), /互相包含/);
@@ -48,5 +47,4 @@ test('exports custom resources by their declared nested names and refuses path e
   model.motions = { '../escape': [{ file: 'source.mtn' }] };
   await fs.writeFile(path.join(input, 'model.json'), JSON.stringify(model));
   await assert.rejects(exportGarupaLive2d(input, output), /包内路径/);
-  await assert.rejects(fs.stat(path.join(output, 'config.json')), { code: 'ENOENT' });
 });

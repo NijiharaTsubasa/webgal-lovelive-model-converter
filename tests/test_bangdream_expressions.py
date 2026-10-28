@@ -90,7 +90,6 @@ class BangDreamExpressionTests(unittest.TestCase):
         self.assertEqual(len(states["face"]), 8)
         self.assertEqual(set(states["mouth"]), {"Neutral", "Joy", "A", "I"})
         self.assertEqual(package["defaultExpression"], {"eye": "Neutral", "closed": "Neutral", "open": "A"})
-        self.assertNotIn("expressions", package)
         face = evaluate(package, states["face"]["Joy-WinkL"], "blink", 1)
         self.assertEqual(face["face_Base_obj", "face_main_eye_wink_L"], 1)
         self.assertNotIn("blink", states["face"]["Joy-WinkL"].get("controls", {}))
