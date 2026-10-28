@@ -98,7 +98,7 @@ test('thumbnail renderer registers Yohane profiles and prepares after camera fra
     if(pathname.endsWith('/profile.js'))return route.fulfill({contentType:'text/javascript',body:`
       export function createRenderProfile({THREE,renderer}){let prepared=false,mesh;
        return {attach(root){mesh=new THREE.Mesh(new THREE.BoxGeometry(.3,.3,.3),new THREE.MeshBasicMaterial({color:0xff0000}));mesh.position.y=1.4;root.add(mesh);},detach(root){root.remove(mesh);},destroy(){mesh.geometry.dispose();mesh.material.dispose();},
-        async prepare(frame){if(frame.camera.position.z<3)throw new Error('Camera not framed');await new Promise(resolve=>setTimeout(resolve,30));prepared=true;window.__thumbnailPrepared=true;},
+        async prepare(frame){if(!frame.camera.isPerspectiveCamera)throw new Error('Thumbnail must use the production perspective projection');if(frame.camera.position.z<3)throw new Error('Camera not framed');await new Promise(resolve=>setTimeout(resolve,30));prepared=true;window.__thumbnailPrepared=true;},
         render(frame){if(!prepared)throw new Error('Thumbnail profile rendered before preparation');renderer.render(frame.scene,frame.camera);}};}
     `});
     if(pathname.endsWith('/model.glb')){
@@ -121,7 +121,7 @@ test('thumbnail renderer registers Yohane profiles and prepares after camera fra
 });
 
 test('thumbnail head-body selection uses both parts and the integrated torso framing', {timeout:30000}, async t=>{
-  const vite=await createServer({configFile:false,logLevel:'silent',server:{host:'127.0.0.1',port:0},plugins:[{
+  const vite=await createServer({configFile:false,logLevel:'silent',server:{host:'127.0.0.1',port:0,watch:null},plugins:[{
     name:'thumbnail-composition-fixture',enforce:'pre',
     resolveId(id){if(id==='/renderer/character-renderer.js')return '\0thumbnail-character';},
     load(id){if(id==='\0thumbnail-character')return `
@@ -137,7 +137,7 @@ test('thumbnail head-body selection uses both parts and the integrated torso fra
           for(const entry of entries){if(entry.component.role==='integrated'){add('head');add('body');}else add(entry.component.role);}
           return {root:this.root};}
         update(){} prepareFrame(){} async prepareRenderResources(){}
-        render(){window.thumbnailFrames.push([this.camera.left,this.camera.right,this.camera.top,this.camera.bottom,...this.camera.position.toArray()]);this.renderer.render(this.scene,this.camera);}
+        render(){window.thumbnailFrames.push([...this.camera.projectionMatrix.elements,...this.camera.position.toArray()]);this.renderer.render(this.scene,this.camera);}
       }
     `;}
   }]});

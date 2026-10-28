@@ -10,7 +10,7 @@ export async function initialize() {
   const light = new THREE.DirectionalLight(0xffffff, 1);
   light.position.set(3, 5, 4);
   scene.add(light);
-  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .01, 20);
+  const camera = new THREE.PerspectiveCamera(35, 384 / 448, .01, 20);
   const character = new CharacterRenderer({ renderer, scene, camera,
     fetchResource: globalThis.fetch.bind(globalThis) });
   character.setPhysicsEnabled(false);
@@ -56,10 +56,11 @@ export async function initialize() {
       });
       top += torso * .06;
       const halfHeight = (top - bottom) / 2;
-      const halfWidth = halfHeight * 384 / 448;
-      camera.left = -halfWidth; camera.right = halfWidth;
-      camera.top = halfHeight; camera.bottom = -halfHeight;
-      camera.position.set(headPosition.x, (top + bottom) / 2, headPosition.z + 4);
+      // Match the production perspective projection used by game shaders,
+      // retaining the upper-body frame size at the character's head depth.
+      const distance = 4;
+      camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfHeight / distance));
+      camera.position.set(headPosition.x, (top + bottom) / 2, headPosition.z + distance);
       camera.lookAt(headPosition.x, (top + bottom) / 2, headPosition.z);
       camera.updateProjectionMatrix();
       character.prepareFrame();
