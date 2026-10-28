@@ -53,6 +53,7 @@ from .model_adapter import BangDreamModelAdapter
 from .face_source import load_face_controller
 from .previews import BodyPreviews
 from .metadata import ModelDescriptions
+from .constraints import extract_transform_constraint_behavior
 
 
 UNITY_VERSION = "2021.3.22f1"
@@ -1228,7 +1229,9 @@ def convert_one(
     normalized = _load_normalized(baked_dir, source_name, bundle)
     exported = export_glb(bundle, normalized, color_type=color_type) if color_type else export_glb(bundle, normalized)
     physics = extract_model_physics(bundle.env, exported)
-    behaviors = _avatar_behavior_declarations(bundle, normalized, exported)
+    # Resolve constraint frame identities before other declarations bind names.
+    transform_constraints = extract_transform_constraint_behavior(bundle.prefab, exported)
+    behaviors = _avatar_behavior_declarations(bundle, normalized, exported) + transform_constraints
     if bundle.kind == "head":
         expressions = extract_head_expression(
             bundle,
