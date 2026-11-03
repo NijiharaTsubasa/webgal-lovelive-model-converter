@@ -15,6 +15,7 @@
 | [Python](https://www.python.org/downloads/windows/) | 本项目测试使用 Python 3.13。安装时启用 pip，并勾选将 Python 加入 PATH。 |
 | [Node.js](https://nodejs.org/en/download) | 安装 Node.js 24 LTS，包含 npm。 |
 | [Git](https://git-scm.com/downloads) | 安装时允许命令行使用 Git；`npm install` 需要它从 GitHub 获取[渲染器依赖](https://github.com/NijiharaTsubasa/webgal-lovelive-gltf-renderer)。即使通过 ZIP 下载本仓库，也需要安装 Git。 |
+| [KTX-Software](https://github.com/KhronosGroup/KTX-Software/releases) | （可选）预压缩莲之空和 BanG Dream 纹理需要 `toktx`。 |
 | [Unity Editor](https://unity.com/releases/editor/archive) | 安装并激活 Unity Editor，可先使用 Unity Hub 默认安装的版本。本项目使用 Unity 2022.3 LTS 完成过验证；其他版本如遇资源加载或烘焙问题，可尝试该版本。|
 
 确认命令能够运行，然后安装本项目依赖：
@@ -60,7 +61,18 @@ WebGAL LoveLive专版支持在 glTF 3D 模型上播放《BanG Dream 少女乐团
 
 若使用 inspix-hailstorm 下载数据包，该文件应该位于 masterdata 目录下。
 
-#### 1.3 运行转换
+#### 1.3 （可选）预压缩纹理
+
+预压缩纹理可以减少约 3/4 的显存占用，增大角色同屏数。（莲之空单角色贴图压缩前预计占用 100~180MB 显存，压缩后预计占用 25~50MB ）
+
+```powershell
+$env:TOKTX=toktx.exe文件路径
+npm run compress:hasunosora
+```
+
+压缩结果保存在 `compressed_texture`，已完成的纹理会在后续运行时复用。下文的转换命令会自动使用对应的压缩纹理；缺少压缩结果时输出 PNG。
+
+#### 1.4 运行转换
 
 ```powershell
 npm run convert:full:hasunosora
@@ -124,7 +136,18 @@ npm run convert:full:llas
 
 将解密后的 BanG Dream 数据包的 `thumb/costume3ddress` 目录复制到 `input_bangdream` 下，保留目录原名称。将解密后的 BanG Dream masterdata 也放到 `input_bangdream` 下，重命名为 `masterdata.pb`。
 
-#### 3.3 运行转换
+#### 3.3 （可选）预压缩纹理
+
+预压缩纹理可以减少约 3/4 的显存占用，增大角色同屏数。（BanG Dream 单角色贴图压缩前预计占用 300MB 左右显存，压缩后预计占用 75MB 左右，此数据仅统计贴图，未统计抗锯齿等其他显著显存占用）
+
+```powershell
+$env:TOKTX=toktx.exe文件路径
+npm run compress:bangdream
+```
+
+压缩结果保存在 `compressed_texture`，已完成的纹理会在后续运行时复用。下文的转换命令会自动使用对应的压缩纹理；缺少压缩结果时输出 PNG。
+
+#### 3.4 运行转换
 
 ```powershell
 npm run convert:full:bangdream
@@ -231,12 +254,21 @@ npm run convert:full
 
 此命令依次发现并烘焙各游戏的输入，再清空并重建有输入的游戏输出。没有识别到模型或动作时，脚本打印“输入为空”并正常跳过。某款游戏没有输入时，其已有输出保持不变。有效输入缺少依赖或烘焙失败会报错并停止。
 
+此命令不会自动压缩纹理。如您需要压缩纹理，使用以下的命令：
+
+```powershell
+$env:TOKTX=toktx.exe文件路径
+npm run compress
+npm run convert:full
+```
+
 ### 7. 转换命令清单
 
 首次转换或修改了烘焙实现时使用“完整转换”；已有烘焙结果、只需重新生成产物时使用“复用烘焙结果转换”。
 
 | 操作 | 莲之空 | LLAS | BanG Dream | 幻日夜羽 |
 | --- | --- | --- | --- | --- |
+| 纹理预压缩 | `npm run compress:hasunosora` | 无 | `npm run compress:bangdream` | 无 |
 | 完整转换 | `npm run convert:full:hasunosora` | `npm run convert:full:llas` | `npm run convert:full:bangdream` | `npm run convert:full:yohane` |
 | 复用烘焙结果转换 | `npm run convert:hasunosora` | `npm run convert:llas` | `npm run convert:bangdream` | `npm run convert:yohane` |
 | 复用烘焙结果，清空并重建该游戏输出 | `npm run convert:hasunosora:clean` | `npm run convert:llas:clean` | `npm run convert:bangdream:clean` | `npm run convert:yohane:clean` |
@@ -244,10 +276,13 @@ npm run convert:full
 | 只烘焙模型 | `npm run bake:hasunosora:models` | `npm run bake:llas:models` | `npm run bake:bangdream:models` | `npm run bake:yohane:models` |
 | 只烘焙动作 | `npm run bake:hasunosora:motions` | `npm run bake:llas:motions` | `npm run bake:bangdream:motions` | `npm run bake:yohane:motions` |
 
+注：LLAS 和幻日夜羽纹理体积较小，压缩收益不大，因此暂未支持。
+
 普通转换会覆盖本次涉及的模型和动作，不删除未涉及的旧输出；`:clean` 和完整转换会清空所选游戏的输出，手工修改过的输出文件也会被删除。烘焙结果保存在 `baked_motions`，单独烘焙不会生成最终资源包。BanG Dream 的动作烘焙仍需要一套模型作为 Humanoid 参照。
 
 | 其他命令 | 用途 |
 | --- | --- |
+| `npm run compress` | 预压缩所有支持游戏的纹理。 |
 | `npm run convert` | 使用已有烘焙结果转换全部游戏；某款游戏转换失败后继续处理其他游戏，最后返回失败状态。 |
 | `npm run convert:clean` | 使用已有烘焙结果，清空并重建有输入的游戏输出。 |
 | `npm run convert:full` | 烘焙有输入的游戏，再清空并重建这些游戏的输出。 |
@@ -259,6 +294,12 @@ npm run convert:full
 
 ```powershell
 npm run classify:llas -- --category model --category navi
+```
+
+纹理压缩会按 CPU 核数安排并发。需要调整时可指定同时处理的纹理数及每个编码进程的线程数，例如：
+
+```powershell
+npm run compress:hasunosora -- --workers 4 --threads 1
 ```
 
 单独指定 Unity 路径的例子：

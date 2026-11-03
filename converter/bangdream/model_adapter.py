@@ -39,6 +39,20 @@ class BangDreamModelAdapter(FaceBonesCopierAdapter):
 
     def bind_builder(self, builder: Any) -> None:
         self.material_exporter = MeteorMaterialExporter(builder)
+        if builder.compress_textures:
+            # Decide once before any shared image is emitted, using the selected
+            # ColorVariation and initialized materials of active renderers.
+            for reader in self.environment.objects:
+                if reader.type.name != 'SkinnedMeshRenderer':
+                    continue
+                renderer = reader.read()
+                if not getattr(renderer, 'm_Mesh', None) or not self.should_export_renderer(renderer):
+                    continue
+                context = self.material_mapping.context_for_renderer(renderer)
+                for pointer in getattr(renderer, 'm_Materials', []):
+                    selected = self.material_mapping.bind(pointer, category_context=context)
+                    if selected:
+                        self.material_exporter.preserve_alpha_endpoints(selected.deref_parse_as_object())
 
     def classify_shader(self, material: Any) -> None:
         return None

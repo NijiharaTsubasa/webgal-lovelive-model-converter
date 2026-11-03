@@ -59,6 +59,65 @@ def material(shader, *, keywords=None, floats=(), textures=None, setup=None, dis
 
 
 class MeteorMaterialTests(unittest.TestCase):
+    def test_alpha_endpoint_protection_uses_enabled_native_clip(self):
+        from converter.common.unity import object_id
+        keywords = next(c['keywords'] for c in UNIFORM_DATA['shaders']['Meteor/MeteorShader']
+                        if '_USE_ALPHACLIP' in c['keywords'])
+        source = Texture(image=Image.new('RGBA', (64, 64)))
+        for opacity, alpha, disabled, protected in [
+            (1, 1, (), True), (.5, .5, (), True),
+            (.5, 1, (), False), (0, 0, (), False), (1, .5, (), False),
+            (1, 1, ('UniversalForward',), False),
+        ]:
+            with self.subTest(opacity=opacity, alpha=alpha, disabled=disabled):
+                builder = GlbBuilder(compress_textures=True)
+                value = material('Meteor/MeteorShader', keywords=keywords,
+                    floats=[('_GlobalOpacity', opacity)], textures={'_MainTex': source}, disabled=disabled)
+                value.m_SavedProperties.m_Colors = [('_BaseColor', Object(r=1, g=1, b=1, a=alpha))]
+                MeteorMaterialExporter(builder).preserve_alpha_endpoints(value)
+                self.assertEqual(object_id(source) in builder.lossless_texture_keys, protected)
+        builder = GlbBuilder(compress_textures=True)
+        exporter = MeteorMaterialExporter(builder)
+        # Offset reads GlobalOpacity but has no native alpha discard.
+        exporter.preserve_alpha_endpoints(material('Meteor/MeteorShaderOffset', keywords=[],
+            floats=[('_GlobalOpacity', 1)], textures={'_MainTex': source}))
+        self.assertEqual(builder.lossless_texture_keys, set())
+        fallback = next(c['keywords'] for c in UNIFORM_DATA['shaders']['Meteor/MeteorShader']
+                        if '_USE_ALPHACLIP' in c['keywords']
+                        and not any('_GlobalOpacity' in v for v in c['uniforms_by_pass'].values()))
+        exporter.preserve_alpha_endpoints(material('Meteor/MeteorShader', keywords=fallback,
+            floats=[('_GlobalOpacity', 1)], textures={'_MainTex': source}))
+        self.assertEqual(builder.lossless_texture_keys, set())
+
+    def test_alpha_prescan_uses_selected_material_before_shared_image(self):
+        from converter.bangdream.model_adapter import BangDreamModelAdapter
+        keywords = next(c['keywords'] for c in UNIFORM_DATA['shaders']['Meteor/MeteorShader']
+                        if '_USE_ALPHACLIP' in c['keywords'])
+        source = Texture(image=Image.new('RGBA', (64, 64)))
+        selected = material('Meteor/MeteorShader', keywords=keywords,
+            floats=[('_GlobalOpacity', 1)], textures={'_MainTex': source})
+        original_pointer = Pointer(material('Meteor/MeteorShaderOffset', keywords=[]), 8)
+        renderer = Object(m_Mesh=True, m_Materials=[original_pointer])
+        from unittest.mock import Mock
+        mapping = Mock()
+        mapping.context_for_renderer.return_value = 'selected-context'
+        mapping.bind.return_value = Pointer(selected, 9)
+        adapter = Object(environment=Object(objects=[Object(type=Object(name='SkinnedMeshRenderer'), read=lambda: renderer)]),
+            material_mapping=mapping, should_export_renderer=lambda value: True)
+        builder = GlbBuilder(compress_textures=True)
+        BangDreamModelAdapter.bind_builder(adapter, builder)
+        mapping.bind.assert_called_once_with(original_pointer, category_context='selected-context')
+        with patch('converter.common.uastc.read_compressed_texture') as encode:
+            self.assertEqual(builder.add_image(source), builder.add_image(source))
+            encode.assert_not_called()
+        self.assertEqual(len(builder.document['images']), 1)
+        self.assertEqual(builder.document['images'][0]['mimeType'], 'image/png')
+        # Inactive source renderers must not protect unused variant textures.
+        adapter.should_export_renderer = lambda value: False
+        builder = GlbBuilder(compress_textures=True)
+        BangDreamModelAdapter.bind_builder(adapter, builder)
+        self.assertEqual(builder.lossless_texture_keys, set())
+
     def test_four_source_shader_names_emit_only_standard_runtime_data(self):
         expected = ['garupa-meteor', 'garupa-meteor-offset', 'garupa-meteor-transparent', 'garupa-urp-lit']
         for shader, name in zip(SHADER_NAMES.values(), expected):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,13 @@ def collect_baked_motions(baked_dir: Path | None, input_dir: Path, output: Path)
     descriptions = load_motion_descriptions(MOTION_DESCRIPTIONS_CSV)
     output.mkdir(parents=True, exist_ok=True)
     entries: list[dict[str, Any]] = []
-    for bundle_path in motions:
+    print(f"[hasunosora:motion] 开始转换 {len(motions)} 个动作", flush=True)
+    last_report = time.monotonic()
+    for number, bundle_path in enumerate(motions, 1):
+        now = time.monotonic()
+        if number == 1 or number % 25 == 0 or now - last_report >= 5:
+            print(f"[hasunosora:motion] {number}/{len(motions)} 读取烘焙数据并编译控制器: {bundle_path.name}", flush=True)
+            last_report = now
         if baked_dir is None:
             raise FileNotFoundError(f"Missing baked motion directory for {bundle_path.name}")
         baked_names = [bundle_path.stem]
@@ -93,4 +100,5 @@ def collect_baked_motions(baked_dir: Path | None, input_dir: Path, output: Path)
         }
         (output / dest_name).write_bytes(encode_motion({**metadata, **data}))
         entries.append({**metadata, "src": dest_name})
+    print(f"[hasunosora:motion] 完成 {len(entries)}/{len(motions)} 个动作", flush=True)
     return entries

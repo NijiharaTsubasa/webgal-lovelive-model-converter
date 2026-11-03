@@ -329,6 +329,10 @@ export async function auditMotions(directory, { expectedGroups = null, expectedC
 }
 
 async function main() {
+  if (process.argv.slice(2).some(arg => arg === '--help' || arg === '-h')) {
+    console.log('node tools/validate-all-motions.mjs [--root output_packages] [--report <file>] [--expected-groups <JSON>] [--expected-clips <count>]');
+    return;
+  }
   const options = { root: 'output_packages', report: '.tmp/all-motion-validation.json', 'expected-groups': null, 'expected-clips': null };
   for (let i = 2; i < process.argv.length; i += 2) {
     const key = process.argv[i].slice(2);

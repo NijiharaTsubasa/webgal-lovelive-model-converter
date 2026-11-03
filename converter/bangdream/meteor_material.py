@@ -59,6 +59,37 @@ class MeteorMaterialExporter:
         self._matcaps = {}
         self.diagnostics = []
 
+    def preserve_alpha_endpoints(self, source_material):
+        """Protect exact opaque texels used by an enabled native alpha clip."""
+        snapshot = material_snapshot(source_material, require_known_shader=True)
+        if '_USE_ALPHACLIP' not in snapshot['m_ValidKeywords']:
+            return
+        # The retained native programs discard MainTex.a * saturate(BaseColor.a)
+        # - GlobalOpacity < 0 in these passes. Offset uses GlobalOpacity without
+        # this discard, so the presence of that uniform alone is insufficient.
+        clip_passes = {
+            'Meteor/MeteorShader': {'ForwardLit'},
+            'Meteor/MeteorShaderTransparent': {'Accumulate', 'AlphaOnly', 'DepthOnly', 'ForwardLit'},
+        }.get(snapshot['shader']['name'], set())
+        keywords = sorted(set(snapshot['m_ValidKeywords']))
+        combination = next(c for c in UNIFORM_DATA['shaders'][snapshot['shader']['name']]
+                           if c['keywords'] == keywords)
+        passes = [p['id'] for p in resolve_meteor_passes(snapshot)['passes']
+                  if p['id'].split('::')[-2] in clip_passes
+                  and '_GlobalOpacity' in combination['uniforms_by_pass'][p['id']]]
+        if not passes:
+            return
+        params = resolve_meteor_uniforms(snapshot, pass_ids=passes)['shaderParams']
+        alpha = min(1.0, max(0.0, params['_BaseColor'][3]))
+        # At this boundary even alpha 255 -> 254 removes an opaque fragment.
+        # Zero alpha and cutoffs above the attainable range have no such edge.
+        if alpha <= 0 or params['_GlobalOpacity'] != alpha:
+            return
+        environment = _texture_environments(source_material).get('_MainTex')
+        pointer = getattr(environment, 'm_Texture', None)
+        if pointer:
+            self.builder.lossless_texture_keys.add(object_id(pointer.deref_parse_as_object()))
+
     def adapt_material(self, source_material, gltf_material):
         snapshot = material_snapshot(source_material, require_known_shader=True)
         resolved_passes = resolve_meteor_passes(snapshot)

@@ -100,6 +100,33 @@ class HasunosoraModelAdapter(FaceBonesCopierAdapter):
 
     adapt_material = staticmethod(adapt_material)
 
+    def bind_builder(self, builder: Any) -> None:
+        # CharacterEye discards samples below its alpha threshold. At 1, even
+        # a small lossy change to an opaque texel opens a hole. Collect before
+        # exporting any material so a shared image has one order-independent
+        # encoding, including when another shader references it first.
+        if not builder.compress_textures:
+            return
+        for reader in self.environment.objects:
+            if reader.type.name != "Material":
+                continue
+            material = reader.read()
+            shader_pointer = getattr(material, "m_Shader", None)
+            if not shader_pointer:
+                continue
+            shader = shader_pointer.deref_parse_as_object()
+            if shader.m_ParsedForm.m_Name != "Character/ToonShader_CharacterEye":
+                continue
+            floats = {str(getattr(k, "name", k)): float(v)
+                      for k, v in material.m_SavedProperties.m_Floats}
+            if floats.get("_AlphaClipThreshold", 1.0) < 1.0:
+                continue
+            textures = {str(getattr(k, "name", k)): v
+                        for k, v in material.m_SavedProperties.m_TexEnvs}
+            main = textures.get("_MainTex")
+            if main and main.m_Texture:
+                builder.lossless_texture_keys.add(object_id(main.m_Texture.deref_parse_as_object()))
+
     def copied_bone_keys(self, redirects: dict[tuple[int, int], int]) -> frozenset[tuple[int, int]]:
         # APK 5.1.0 FaceBonesCopier.LateUpdate (RVA 0x4F4B130): spine03
         # copies world position/rotation; neck, head and eyes copy local rotation.
@@ -420,9 +447,11 @@ def convert(
     shader and Behavior packages are published separately. The
     top-level `index.json` is owned by convert.py — this function only writes
     the per-game index."""
-    index, _, motion_bundles = discover_inputs(input_dir)
+    print(f"[hasunosora:scan] 扫描输入目录: {input_dir}", flush=True)
+    index, _, motion_bundles = discover_inputs(input_dir, progress=lambda message: print(message, flush=True))
     model_bundles = sorted((path for name, path in index.items() if name.startswith("3d")),
                            key=lambda path: path.name)
+    print(f"[hasunosora:scan] 扫描完成: {len(index)} 个资源，{len(model_bundles)} 个模型，{len(motion_bundles)} 个动作", flush=True)
     if not model_bundles and (models_only or not motion_bundles):
         if model_names:
             raise ValueError(f"Hasunosora requested models not found: {sorted(set(model_names))}")
@@ -435,6 +464,7 @@ def convert(
     if clean and not models_only and motion_output.exists():
         shutil.rmtree(motion_output)
     game_dir.mkdir(parents=True, exist_ok=True)
+    print("[hasunosora:convert] 读取服装资料与默认姿态", flush=True)
     costume_labels = load_costume_labels(input_dir)
     costume_motion_groups = load_costume_motion_groups(input_dir)
     idle_defaults = hasunosora_idle_defaults(input_dir, baked_dir)
@@ -446,10 +476,10 @@ def convert(
     packages = []
     requested = set(model_names or [])
     matched = set()
-    for model_bundle in model_bundles:
+    selected_models = [path for path in model_bundles if not requested or path.stem in requested]
+    for model_number, model_bundle in enumerate(selected_models, 1):
         package_name = model_bundle.stem
-        if requested and package_name not in requested:
-            continue
+        print(f"[hasunosora:model] {model_number}/{len(selected_models)} 加载模型及依赖: {model_bundle.name}", flush=True)
         closure = dependency_closure(model_bundle, index)
         environment = UnityPy.load(*map(str, closure))
         bundle_name, dependencies = bundle_metadata(model_bundle)
@@ -467,9 +497,11 @@ def convert(
         if not isinstance(source_character, str) or source_character.casefold() != body_name.casefold():
             raise ValueError(f"Normalized skeleton source does not match {model_bundle.name}: "
                              f"{source_character!r} != {body_name!r}")
+        print(f"[hasunosora:model] {model_number}/{len(selected_models)} 导出模型、材质与纹理: {package_name}", flush=True)
         exported = export_normalized_model(
             environment, root_pointer, norm_data,
             adapter=HasunosoraModelAdapter(environment, root),
+            compress_textures=True,
         )
         physics = extract_model_physics(environment, exported)
         behaviors = extract_sub_bone_behavior(root, exported)
@@ -509,7 +541,7 @@ def convert(
         (package_dir / "config.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         packages.append(f"{package_name}/config.json")
         state_count = sum(len(group['states']) for group in expressions['expressionGroups'])
-        print(f"[character] [normalized] {model_bundle.name} -> {package_name} ({state_count} facial states)")
+        print(f"[character] [normalized] {model_bundle.name} -> {package_name} ({state_count} facial states)", flush=True)
 
     if requested - matched:
         raise ValueError(f"Hasunosora requested models not found: {sorted(requested - matched)}")

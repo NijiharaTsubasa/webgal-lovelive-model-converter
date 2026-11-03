@@ -35,9 +35,13 @@ export async function exportGarupaLive2d(input, output) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
-    const output = path.resolve('output_packages/mtn_exp');
-    const count = await exportGarupaLive2d('input_garupa_live2d/.mtn_exp', output);
-    console.log(`已导出 ${count} 个参数动作和表情：${output}`);
+    if (process.argv.slice(2).some(arg => arg === '--help' || arg === '-h')) {
+      console.log('npm run export:garupa-live2d\nInput: input_garupa_live2d/.mtn_exp\nOutput: output_packages/mtn_exp');
+    } else {
+      const output = path.resolve('output_packages/mtn_exp');
+      const count = await exportGarupaLive2d('input_garupa_live2d/.mtn_exp', output);
+      console.log(`已导出 ${count} 个参数动作和表情：${output}`);
+    }
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

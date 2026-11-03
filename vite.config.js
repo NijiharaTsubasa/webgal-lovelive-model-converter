@@ -22,6 +22,7 @@ export default defineConfig({
       // Watching them stalls the dev server during full conversion runs.
       ignored: [
         "**/input_*/**", "**/output_packages/**", "**/baked_motions/**",
+        "**/compressed_texture/**",
         "**/validation/**", "**/.tmp/**", "**/converter/unity_baker/Temp/**",
         "**/converter/unity_baker/Library/**",
       ],

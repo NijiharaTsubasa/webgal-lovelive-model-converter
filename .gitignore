@@ -13,3 +13,5 @@ converter/unity_baker/Temp/
 converter/unity_baker/Logs/
 converter/unity_baker/Obj/
 converter/unity_baker/UserSettings/
+
+compressed_texture/

@@ -41,7 +41,7 @@ GAMES: list[str] = [
 ]
 
 
-def _run_game(game: str, root: Path, *, clean: bool = False) -> int:
+def _run_game(game: str, root: Path, *, clean: bool = False, extra_args: list[str] | None = None) -> int:
     code_root = Path(__file__).resolve().parent
     script = code_root / "converter" / f"convert_{game}.py"
     if not script.exists():
@@ -51,6 +51,7 @@ def _run_game(game: str, root: Path, *, clean: bool = False) -> int:
     command = [sys.executable, "-m", f"converter.{script.stem}"]
     if clean:
         command.append("--clean")
+    command.extend(extra_args or [])
     env = dict(os.environ)
     env['PYTHONPATH'] = str(code_root) + os.pathsep + env.get('PYTHONPATH', '')
     return subprocess.call(command, cwd=root, env=env)
@@ -107,7 +108,11 @@ def _merge_top_level_index(root: Path) -> int:
 
 
 def main(workspace_root: Path | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Convert registered games and refresh the preview catalog.")
+    parser = argparse.ArgumentParser(
+        description="Convert registered games and refresh the preview catalog.", add_help=False,
+        epilog="Game-specific options: python convert.py --game GAME --help",
+    )
+    parser.add_argument('-h', '--help', action='store_true', help='Show this help, or the selected game converter help.')
     parser.add_argument(
         "--merge-only",
         action="store_true",
@@ -115,17 +120,25 @@ def main(workspace_root: Path | None = None) -> int:
     )
     parser.add_argument("--game", choices=GAMES, help="Convert only this game, then refresh the PoC index.")
     parser.add_argument("--clean", action="store_true", help="Rebuild selected games' outputs before conversion.")
-    args = parser.parse_args()
+    args, extra_args = parser.parse_known_args()
+    if args.help and not args.game:
+        parser.print_help()
+        return 0
+    if extra_args and not args.game:
+        parser.error("game-specific arguments require --game: " + " ".join(extra_args))
     if args.merge_only and (args.game or args.clean):
         parser.error("--merge-only cannot be combined with --game or --clean")
     root = workspace_root or Path(__file__).resolve().parent
+    if args.help:
+        return _run_game(args.game, root, extra_args=['--help'])
     if args.merge_only:
         return _merge_top_level_index(root)
 
     games = [args.game] if args.game else GAMES
     failures: list[str] = []
     for game in games:
-        rc = _run_game(game, root, clean=args.clean)
+        rc = (_run_game(game, root, clean=args.clean, extra_args=extra_args)
+              if extra_args else _run_game(game, root, clean=args.clean))
         if rc:
             failures.append(game)
 

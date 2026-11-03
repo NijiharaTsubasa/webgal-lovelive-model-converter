@@ -392,11 +392,12 @@ def export_normalized_model(
     *,
     include_vertex_colors: bool = False,
     source_uv_channels: tuple[int, ...] = (),
+    compress_textures: bool = False,
 ) -> NormalizedExport:
     source_uv_channels = _validated_source_uv_channels(source_uv_channels)
     _validate_skeleton(skeleton_json)
 
-    builder = GlbBuilder()
+    builder = GlbBuilder(compress_textures=compress_textures)
     builder.include_vertex_colors = include_vertex_colors
     builder.source_uv_channels = source_uv_channels
     bones = skeleton_json["bones"]

@@ -119,7 +119,7 @@ async function main() {
     else if (args[i] === '--models') names = new Set(args[++i].split(','));
     else if (args[i] === '--missing') missingOnly = true;
     else if (args[i] === '--browser') browserChannel = args[++i];
-    else if (args[i] === '--help') {
+    else if (args[i] === '--help' || args[i] === '-h') {
       console.log('npm run preview:models -- [--output <packages>] [--models <name,name>] [--missing] [--sync <game-model-directory>] [--browser chromium|msedge|chrome]');
       return;
     } else throw new Error(`Unknown argument: ${args[i]}`);

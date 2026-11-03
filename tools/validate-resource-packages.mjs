@@ -261,6 +261,10 @@ export async function auditResourcePackages(output, options = {}) {
 }
 
 async function main() {
+  if (process.argv.slice(2).some(arg => arg === '--help' || arg === '-h')) {
+    console.log('node tools/validate-resource-packages.mjs [--output output_packages] [--runtime <directory>] [--report <file>]');
+    return;
+  }
   const options = { output: "output_packages" };
   for (let i = 2; i < process.argv.length; i++) {
     const key = process.argv[i].replace(/^--/, "");

@@ -282,6 +282,29 @@ class BangDreamManifestTests(unittest.TestCase):
         self.assertEqual(binding["boneParts"][1]["targets"], [])
         self.assertEqual(binding["profile"]["height"], 1.55)
 
+    def test_avatar_profile_preserves_native_id_independently_of_bundle_filename(self):
+        source = {
+            "Id": 39,
+            "Height": 1.52,
+            "BreastSize": 50.0,
+            "LegSpacing": 1.0,
+            "HeadScaling": 1.0,
+            "HipScaling": 1.0,
+            "ShoulderSpacing": 1.0,
+            "BoneSettings": [],
+        }
+        # AvatarDescription.Id is serialized game data, not a package-name code.
+        for filename in ("039_cos_live_default", "renamed-head", "001_unrelated-name"):
+            bundle = BundleAssets(
+                path=Path(filename), env=object(), prefab=None, kind="head",
+                avatar_description=source,
+            )
+            declaration = bangdream._avatar_behavior_declarations(bundle, {}, None)[0]
+            self.assertEqual(declaration["parameters"]["profile"]["id"], 39)
+        self.assertEqual(_avatar_profile_parameters({**source, "Id": 0})["id"], 0)
+        without_id = {key: value for key, value in source.items() if key != "Id"}
+        self.assertNotIn("id", _avatar_profile_parameters(without_id))
+
     def test_avatar_binding_rejects_unresolved_non_null_transform(self):
         scaler = {
             "Height": 1.55, "UseScaling": 1, "LegSpacing": 1,

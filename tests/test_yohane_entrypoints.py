@@ -1,4 +1,6 @@
 import json
+import shlex
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -6,6 +8,7 @@ from types import SimpleNamespace
 
 import convert
 from converter.common import normalized_model
+from converter import pipeline
 
 
 class YohaneEntrypointTests(unittest.TestCase):
@@ -13,9 +16,17 @@ class YohaneEntrypointTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         scripts = json.loads((root / 'package.json').read_text(encoding='utf-8'))['scripts']
         self.assertIn('yohane', convert.GAMES)
-        self.assertIn('npm run bake:yohane', scripts['convert:full'])
-        self.assertEqual(scripts['convert:full:yohane'],
-                         'npm run bake:yohane && npm run convert:yohane:clean')
+        for name in ('convert:full', 'convert:full:yohane'):
+            command = shlex.split(scripts[name])
+            self.assertEqual(command[:3], ['python', '-m', 'converter.pipeline'])
+            with self.subTest(command=name), patch.object(sys, 'argv', ['pipeline', *command[3:]]), \
+                    patch.object(pipeline.subprocess, 'call', return_value=0) as call:
+                self.assertEqual(pipeline.main(), 0)
+            stages = [entry.args[0][1:] for entry in call.call_args_list]
+            self.assertIn(['-m', 'converter.bake_yohane'], stages)
+            self.assertLess(stages.index(['-m', 'converter.bake_yohane']), len(stages) - 1)
+            self.assertEqual(stages[-1], ['convert.py', '--clean'] +
+                             (['--game', 'yohane'] if name.endswith(':yohane') else []))
         self.assertIn('--models-only', scripts['bake:yohane:models'])
         self.assertIn('--motions-only', scripts['bake:yohane:motions'])
 

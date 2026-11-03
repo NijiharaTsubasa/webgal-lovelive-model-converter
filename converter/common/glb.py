@@ -45,7 +45,7 @@ def unity_color_to_linear_rgba(color: Any) -> list[float]:
 
 
 class GlbBuilder:
-    def __init__(self) -> None:
+    def __init__(self, *, compress_textures: bool = False) -> None:
         self.document: dict[str, Any] = {
             "asset": {"version": "2.0", "generator": "assetbundle-standalone-packager"},
             "scene": 0,
@@ -62,6 +62,8 @@ class GlbBuilder:
             "accessors": [],
             "buffers": [{"byteLength": 0}],
         }
+        self.lossless_texture_keys: set[tuple[int, int]] = set()
+        self.compress_textures = compress_textures
         self.binary = bytearray()
         self.materials: dict[tuple[int, int], int] = {}
         self.textures: dict[tuple[int, int], int] = {}
@@ -157,8 +159,23 @@ class GlbBuilder:
             image = image.convert("RGBA")
         output = BytesIO()
         image.save(output, format="PNG")
-        view = self.add_view(output.getvalue())
-        self.document["images"].append({"name": texture.m_Name, "bufferView": view, "mimeType": "image/png"})
+        payload = output.getvalue()
+        # KHR_texture_basisu requires block-aligned base dimensions. Keep
+        # small and non-aligned images in their original pixel dimensions.
+        compressed = (self.compress_textures and key not in self.lossless_texture_keys
+                      and max(image.size) > 32
+                      and image.width % 4 == 0 and image.height % 4 == 0)
+        if compressed:
+            from .uastc import read_compressed_texture
+            encoded = read_compressed_texture(payload, width=image.width, height=image.height,
+                color_space="srgb" if color_space == 1 else "linear",
+                mip_count=max(image.size).bit_length() if mip_count > 1 else 1)
+            compressed = encoded is not None
+            if compressed:
+                payload = encoded
+        view = self.add_view(payload)
+        self.document["images"].append({"name": texture.m_Name, "bufferView": view,
+                                        "mimeType": "image/ktx2" if compressed else "image/png"})
         samplers = self.document["samplers"]
         try:
             sampler_index = samplers.index(sampler)
@@ -173,6 +190,13 @@ class GlbBuilder:
             "sampler": sampler_index,
             "extras": texture_extras,
         })
+        if compressed:
+            entry = self.document["textures"][-1]
+            entry["extensions"] = {"KHR_texture_basisu": {"source": entry.pop("source")}}
+            for field in ("extensionsUsed", "extensionsRequired"):
+                extensions = self.document.setdefault(field, [])
+                if "KHR_texture_basisu" not in extensions:
+                    extensions.append("KHR_texture_basisu")
         index = len(self.document["textures"]) - 1
         self.textures[key] = index
         return index

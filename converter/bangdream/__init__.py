@@ -484,6 +484,7 @@ def export_glb(bundle: BundleAssets, normalized_skeleton: dict[str, Any] | None 
         normalized_skeleton,
         adapter,
         source_uv_channels=(0, 1),
+        compress_textures=True,
     )
     adapter.finalize_export(exported)
     return exported
@@ -667,7 +668,7 @@ def _avatar_profile_parameters(source: dict[str, Any]) -> dict[str, Any]:
     height = _number(source, "Height", "AvatarScaler profile")
     if height <= 0:
         raise ValueError("AvatarScaler profile has invalid Height")
-    return {
+    profile = {
         "height": height,
         "breastSize": _number(source, "BreastSize", "AvatarScaler profile"),
         "legSpacing": _number(source, "LegSpacing", "AvatarScaler profile"),
@@ -676,6 +677,9 @@ def _avatar_profile_parameters(source: dict[str, Any]) -> dict[str, Any]:
         "shoulderSpacing": _number(source, "ShoulderSpacing", "AvatarScaler profile"),
         "boneSettings": normalized_settings,
     }
+    if "Id" in source:
+        profile["id"] = source["Id"]
+    return profile
 
 
 def _pointer_transform_name(
