@@ -47,14 +47,19 @@ def _run_game(game: str, root: Path, *, clean: bool = False, extra_args: list[st
     if not script.exists():
         print(f"[skip] {game}: {script.name} missing", file=sys.stderr)
         return 1
-    print(f"[convert:{game}] running converter.{script.stem}")
+    print(f"[convert:{game}] running converter.{script.stem}", flush=True)
     command = [sys.executable, "-m", f"converter.{script.stem}"]
     if clean:
         command.append("--clean")
     command.extend(extra_args or [])
     env = dict(os.environ)
     env['PYTHONPATH'] = str(code_root) + os.pathsep + env.get('PYTHONPATH', '')
-    return subprocess.call(command, cwd=root, env=env)
+    env.setdefault('PYTHONFAULTHANDLER', '1')
+    result = subprocess.call(command, cwd=root, env=env)
+    if result:
+        print(f"[convert:{game}] 转换进程退出：{result} (0x{result & 0xffffffff:08X})",
+              file=sys.stderr, flush=True)
+    return result
 
 
 def _merge_top_level_index(root: Path) -> int:

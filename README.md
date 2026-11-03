@@ -120,6 +120,8 @@ npm run convert:full:llas
 
 模型输出在 `output_packages/llas`，动作输出在 `output_packages/motion/llas`。
 
+服装的原色和游戏提供的异色分别输出为模型包。异色目录追加原游戏配置键，例如 `ch0101_co0015_member_c1`；简介使用对应服装的官方名称。
+
 模型可直接以目录为单位复制到 WebGAL LoveLive专版的 `3d/figure` 目录下。请同时将 [game-runtime 仓库](https://github.com/NijiharaTsubasa/webgal-lovelive-game-runtime) 的 `packages/llas_runtime` 目录复制到 `3d/runtime` 目录下，模型方可正常工作。
 
 将需要的动作从 `output_packages/motion/llas` 复制到游戏的 `3d/motion/llas`，建议保留相对目录结构，方便编辑时查找。

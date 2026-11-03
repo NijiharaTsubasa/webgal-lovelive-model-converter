@@ -18,8 +18,11 @@ class LlasMetadataTests(unittest.TestCase):
                 db.execute("CREATE TABLE m_suit (id INTEGER, member_m_id INTEGER, name TEXT, model_asset_path TEXT)")
                 db.execute("CREATE TABLE m_suit_view (suit_master_id INTEGER, model_asset_path TEXT)")
                 db.execute("CREATE TABLE m_suit_non_playable (id INTEGER, member_m_id INTEGER, name TEXT, model_asset_path TEXT)")
+                db.execute("CREATE TABLE m_suit_attach (suit_master_id INTEGER, original_suit_master_id INTEGER, attach_key TEXT)")
                 db.execute("INSERT INTO m_member VALUES (1, 'k.member_1')")
                 db.execute("INSERT INTO m_suit VALUES (12345, 1, 'k.suit_12345', 'asset-1')")
+                db.execute("INSERT INTO m_suit VALUES (12346, 1, 'k.suit_12346', 'asset-1')")
+                db.execute("INSERT INTO m_suit_attach VALUES (12346, 12345, 'blue')")
                 db.commit()
             with closing(sqlite3.connect(db_root / "asset_a_ja.db")) as db:
                 db.execute("CREATE TABLE member_model (asset_path TEXT, pack_name TEXT, head INTEGER)")
@@ -30,6 +33,7 @@ class LlasMetadataTests(unittest.TestCase):
                 db.executemany("INSERT INTO m_dictionary VALUES (?, ?)", [
                     ("member_1", "高坂 穂乃果"),
                     ("suit_12345", "音ノ木坂学院制服"),
+                    ("suit_12346", "音ノ木坂学院制服[B]"),
                 ])
                 db.commit()
 
@@ -37,6 +41,8 @@ class LlasMetadataTests(unittest.TestCase):
             source = Path("original-pack__24.unity3d")
             self.assertEqual(description_for_source(source, names),
                              "高坂 穂乃果 / 音ノ木坂学院制服")
+            self.assertEqual(description_for_source(source, names, 'blue'),
+                             "高坂 穂乃果 / 音ノ木坂学院制服[B]")
             self.assertEqual(description_for_source(Path("agent-renamed-model.unity3d"), names), "")
 
     def test_missing_original_database_is_not_silently_replaced_by_catalog_csv(self):

@@ -23,6 +23,7 @@ from converter.llas.board_controls import append_board_controls
 from converter.llas.face_companions import build_face_behavior
 from converter.llas.materials import attach_llas_materials
 from converter.llas.metadata import description_for_source, model_descriptions
+from converter.llas.attachments import MemberAttachment, member_attachments, AttachmentMaterialAdapter
 from converter.llas.source_inventory import active_sources
 from converter.common.component_order import order_model_component
 from converter.common.idle_pose import sample_baked_pose
@@ -122,11 +123,14 @@ def inspect_model(source: Path) -> str:
 
 
 def convert_model(source: Path, output_root: Path, baked_root: Path, description: str,
-                  input_root: Path | None = None) -> dict[str, Any]:
+                  input_root: Path | None = None, *, attachment: MemberAttachment | None = None,
+                  discovered_attachments: list[MemberAttachment] | None = None) -> dict[str, Any]:
     UnityPy.config.FALLBACK_UNITY_VERSION = UNITY_VERSION
     inventory = active_sources(input_root) if input_root is not None else None
     face_source = load_member_with_face(source, cab_paths=inventory.cab_paths if inventory else None)
     environment, root, name = face_source.environment, face_source.root, face_source.name
+    if discovered_attachments is not None:
+        discovered_attachments.extend(member_attachments(face_source, source))
     skeleton_path = baked_root / "normalized" / f"{name}.skeleton.json"
     if not skeleton_path.is_file():
         raise FileNotFoundError(
@@ -141,6 +145,10 @@ def convert_model(source: Path, output_root: Path, baked_root: Path, description
         board = json.loads(board_path.read_text(encoding='utf-8'))
     graft = needs_face_graft(face_source.head_all, face_source.needs_merging_face)
     adapter = HeadMaterialAdapter(face_source.head_all, face_source.head_material) if graft else None
+    head_material = face_source.head_material
+    if attachment is not None:
+        adapter = AttachmentMaterialAdapter(face_source, graft, attachment)
+        head_material = adapter.head_material
     exported = export_normalized_model(
         environment, root, skeleton, adapter=adapter, include_vertex_colors=True,
     )
@@ -149,7 +157,7 @@ def convert_model(source: Path, output_root: Path, baked_root: Path, description
                            include_hidden=board_nodes)
     if graft:
         append_face(exported, skeleton, game_object_transform(root.read()),
-                    face_source.head_all, face_source.face_root, face_source.head_material)
+                    face_source.head_all, face_source.face_root, head_material)
     face_definition = {'morphPoses': [], 'expressionGroups': []}
     if board:
         face_definition = append_board_controls(exported.builder, board)
@@ -164,7 +172,8 @@ def convert_model(source: Path, output_root: Path, baked_root: Path, description
                                                   poses['closed'], poses['open'])
         face_definition['behaviors'] = [build_face_behavior(exported.builder.document, poses['companions'],
                                                           face_definition['morphPoses'])]
-    attach_llas_materials(exported.builder, environment)
+    attach_llas_materials(exported.builder, environment,
+                          adapter.material_sources if isinstance(adapter, AttachmentMaterialAdapter) else None)
     physics = extract_model_physics(environment, exported)
     skirt_behavior = build_skirt_behavior(environment, exported)
     if skirt_behavior:
@@ -173,12 +182,18 @@ def convert_model(source: Path, output_root: Path, baked_root: Path, description
     if not math.isfinite(scale) or scale <= 0:
         raise ValueError(f"{source.name}: invalid normalized Humanoid scale {scale}")
 
-    package_dir = output_root / name
+    package_name = name
+    if attachment is not None:
+        # These characters cannot represent one portable package directory.
+        if not attachment.key or any(char in attachment.key for char in '<>:"/\\|?*') or attachment.key.endswith(('.', ' ')):
+            raise ValueError(f'LLAS attachment key cannot be represented as a model package directory: {attachment.key!r}')
+        package_name += '_' + attachment.key
+    package_dir = output_root / package_name
     package_dir.mkdir(parents=True, exist_ok=True)
     exported.builder.write(package_dir / "model.glb")
     component = order_model_component({
         "type": "model",
-        "name": name,
+        "name": package_name,
         "description": description,
         "group": "llas",
         "role": "integrated",
@@ -332,11 +347,18 @@ def convert_all(
     model_components: list[dict[str, Any]] = []
     for source in models:
         name = inspect_model(source)
+        attachments = []
         component = convert_model(source, output_root, baked_root,
                                   description_for_source(source, descriptions),
-                                  input_root)
+                                  input_root, discovered_attachments=attachments)
         model_components.append(component)
         print(f"[llas] {source.name} -> {name}/model.glb")
+        for attachment in attachments:
+            component = convert_model(source, output_root, baked_root,
+                                      description_for_source(source, descriptions, attachment.key),
+                                      input_root, attachment=attachment)
+            model_components.append(component)
+            print(f"[llas] {source.name} [{attachment.key}] -> {component['name']}/model.glb", flush=True)
 
     motion_components = package_all_motions(input_root, output_root, baked_root)
 

@@ -229,7 +229,7 @@ def _transparent(builder: GlbBuilder, material: Any, floats: dict, colors: dict,
     }
 
 
-def attach_llas_materials(builder: GlbBuilder, environment: Any) -> None:
+def attach_llas_materials(builder: GlbBuilder, environment: Any, material_sources: dict | None = None) -> None:
     """Apply material metadata only to Material objects used by the final GLB."""
     readers = {
         (id(reader.assets_file), reader.path_id): reader
@@ -238,9 +238,11 @@ def attach_llas_materials(builder: GlbBuilder, environment: Any) -> None:
     array_cache: dict = {}
     for source_id, index in builder.materials.items():
         reader = readers.get(source_id)
-        if reader is None:
+        material = (material_sources or {}).get(source_id)
+        if material is None and reader is None:
             raise ValueError(f"Exported LLAS material {source_id} is absent from loaded source assets")
-        material = reader.read()
+        if material is None:
+            material = reader.read()
         floats, colors, textures = _properties(material)
         shader_path_id = int(material.m_Shader.m_PathID)
         if shader_path_id == MEMBER_SHADER:

@@ -70,11 +70,11 @@ def _cab_index(directory: str, snapshot: tuple[tuple[str, int, int], ...]) -> di
     return {key: tuple(paths) for key, paths in index.items()}
 
 
-def _load_face_dependency(environment: Any, source: Path, reader: Any, pointer: Any,
-                          cab_paths: dict[str, tuple[Path, ...]] | None = None) -> Path:
+def _load_dependency(environment: Any, source: Path, reader: Any, pointer: Any,
+                     cab_paths: dict[str, tuple[Path, ...]] | None = None, *, resource: str = "face") -> Path:
     external_id = pointer.m_FileID - 1
     if external_id < 0 or external_id >= len(reader.assets_file.externals):
-        raise ValueError(f"{source.name}: face has invalid external FileID {pointer.m_FileID}")
+        raise ValueError(f"{source.name}: {resource} has invalid external FileID {pointer.m_FileID}")
     cab = _cab_name(reader.assets_file.externals[external_id].path)
     if environment.get_cab(cab) is not None:
         return source
@@ -83,16 +83,16 @@ def _load_face_dependency(environment: Any, source: Path, reader: Any, pointer: 
         candidates = cab_paths.get(cab, ())
         if len(candidates) != 1:
             if not candidates:
-                raise FileNotFoundError(f"{source.name}: face dependency CAB {cab} is missing")
-            raise ValueError(f"{source.name}: ambiguous face dependency CAB {cab}: {candidates}")
+                raise FileNotFoundError(f"{source.name}: {resource} dependency CAB {cab} is missing")
+            raise ValueError(f"{source.name}: ambiguous {resource} dependency CAB {cab}: {candidates}")
         candidate = candidates[0]
         environment.load_file(candidate.read_bytes(), name=str(candidate))
         if environment.get_cab(cab) is None:
-            raise ValueError(f"{source.name}: dependency did not register expected face CAB {cab}")
+            raise ValueError(f"{source.name}: dependency did not register expected {resource} CAB {cab}")
         return candidate
 
     # Physical names are a fast way to locate declared dependencies, never the
-    # identity check. Every result must register the precise CAB requested by face.
+    # identity check. Every result must register the precise referenced CAB.
     dependencies = []
     for asset_reader in environment.objects:
         if asset_reader.type.name == "AssetBundle":
@@ -110,12 +110,12 @@ def _load_face_dependency(environment: Any, source: Path, reader: Any, pointer: 
     index = _cab_index(str(source.parent), _directory_snapshot(source.parent))
     candidates = index.get(cab, ())
     if not candidates:
-        raise FileNotFoundError(f"{source.name}: face dependency CAB {cab} is missing from {source.parent}")
+        raise FileNotFoundError(f"{source.name}: {resource} dependency CAB {cab} is missing from {source.parent}")
     if len(candidates) != 1:
-        raise ValueError(f"{source.name}: ambiguous face dependency CAB {cab}: {candidates}")
+        raise ValueError(f"{source.name}: ambiguous {resource} dependency CAB {cab}: {candidates}")
     environment.load_file(candidates[0].read_bytes(), name=str(candidates[0]))
     if environment.get_cab(cab) is None:
-        raise ValueError(f"{source.name}: dependency did not register expected face CAB {cab}")
+        raise ValueError(f"{source.name}: dependency did not register expected {resource} CAB {cab}")
     return candidates[0]
 
 
@@ -148,7 +148,7 @@ def load_member_with_face(source: Path, *, cab_paths: dict[str, tuple[Path, ...]
         raise ValueError(f"{source.name}: BodyPartManager.face is null")
     face_source_path = source
     if face_pointer.m_FileID:
-        face_source_path = _load_face_dependency(environment, source, reader, face_pointer, cab_paths)
+        face_source_path = _load_dependency(environment, source, reader, face_pointer, cab_paths)
     # This dereference checks PathID in the exact CAB, not merely a matching filename.
     try:
         face_reader = face_pointer.deref()

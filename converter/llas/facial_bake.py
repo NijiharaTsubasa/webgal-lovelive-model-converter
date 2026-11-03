@@ -10,7 +10,7 @@ import tempfile
 
 import UnityPy
 
-from converter.llas.face_source import load_member_with_face, _pointer, _load_face_dependency
+from converter.llas.face_source import load_member_with_face, _pointer, _load_dependency
 from converter.llas.face_companions import source_companions, assemble_companions
 
 
@@ -65,14 +65,14 @@ def _preset_sources(face_source, field, domain):
     pointer = _pointer(reader, reader.read_typetree()['memberFaceData'][field])
     source = face_source.face_source_path
     if pointer.m_FileID:
-        source = _load_face_dependency(face_source.environment, source, reader, pointer, face_source.cab_paths)
+        source = _load_dependency(face_source.environment, source, reader, pointer, face_source.cab_paths)
     table_reader = pointer.deref()
     selected = []
     for entry, name in _static_entries(table_reader.read_typetree()['datas'], domain):
         clip_source = source
         clip_pointer = _pointer(table_reader, entry['clip'])
         if clip_pointer.m_FileID:
-            clip_source = _load_face_dependency(face_source.environment, source, table_reader, clip_pointer, face_source.cab_paths)
+            clip_source = _load_dependency(face_source.environment, source, table_reader, clip_pointer, face_source.cab_paths)
         clip_reader = clip_pointer.deref()
         if clip_reader.type.name != 'AnimationClip':
             raise ValueError(f'{clip_source}: facial preset is not AnimationClip')
