@@ -132,6 +132,9 @@ export function validatePhysicsReferences(document, buffers, physics) {
       require(fixed < position.count, `cloth fixed ${fixed} 超出 POSITION`);
       require(used.has(fixed), `cloth fixed ${fixed} 未被 primitive 使用`);
     }
+    if (cloth.proxy) {
+      require(cloth.proxy.vertices.length === position.count, `cloth proxy 顶点数 ${cloth.proxy.vertices.length} 与 POSITION ${position.count} 不一致`);
+    }
   }
 }
 

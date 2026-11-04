@@ -9,7 +9,7 @@ const rendererRoot = path.dirname(path.dirname(createRequire(import.meta.url).re
 const gameRuntimeRoot = path.resolve(process.env.GAME_RUNTIME_DIR ?? '../webgal-lovelive-game-runtime/packages');
 
 export default defineConfig({
-  // Keep the cloth solver's import.meta.url relative to its packaged WASM.
+  // Keep the renderer's import.meta.url assets (Basis transcoder) relative to its package.
   optimizeDeps: { exclude: ['webgal-lovelive-gltf-renderer'] },
   resolve: {
     alias: { '/renderer': path.join(rendererRoot, 'src'), '/game-runtime': gameRuntimeRoot },

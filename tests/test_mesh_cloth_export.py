@@ -5,7 +5,11 @@ import unittest
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
-from converter.common.physics import _merge_mesh_cloth_regions, _mesh_cloth_entries, _resample_mesh_fixed
+from converter.common.physics import _merge_mesh_cloth_regions, _mesh_cloth_entries, _resample_mesh_paint
+
+
+def _resample_mesh_fixed(vertices, matrix, selection):
+    return _resample_mesh_paint(vertices, matrix, selection)[0]
 from converter.common.normalized_model import NormalizedNodeMapping
 from converter.common.unity import object_id
 from tests.test_physics_export import PhysicsFixture, Ptr, vec
@@ -20,13 +24,20 @@ class MeshClothExportTests(unittest.TestCase):
             {"attributes": {"POSITION": 0}}]}], "accessors": [{"count": 5}]}
         base = {"node": 0, "primitive": 0, "radius": .003,
                 "stiffness": 12., "damping": .8, "gravity": [0., 0., 0.]}
-        left = {**base, "fixed": [0, 2, 3, 4], "colliders": [1, 2]}
-        right = {**base, "fixed": [0, 1, 2, 4], "colliders": [2, 3]}
+        left = {**base, "fixed": [0, 2, 3, 4], "colliders": [1, 2], "proxy": {"vertices": [0, 1, 0, 2, 2]}}
+        right = {**base, "fixed": [0, 1, 2, 4], "colliders": [2, 3], "proxy": {"vertices": [0, 0, 0, 1, 0]}}
         result = _merge_mesh_cloth_regions([left, right], document)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["fixed"], [0, 2, 4])
         self.assertEqual(result[0]["colliders"], [1, 2, 3])
+        # Vertex 1 moves with the left component's proxy 1, vertex 3 with the
+        # right component's proxy 1 (offset past the left's three proxies);
+        # still vertices keep the first component's fixed proxies.
+        self.assertEqual(result[0]["proxy"], {"vertices": [0, 1, 0, 4, 2]})
         self.assertEqual(left["fixed"], [0, 2, 3, 4])
+        self.assertEqual(left["proxy"], {"vertices": [0, 1, 0, 2, 2]})
+        without = _merge_mesh_cloth_regions([left, {k: v for k, v in right.items() if k != "proxy"}], document)
+        self.assertNotIn("proxy", without[0])
         overlapping = {**right, "fixed": [0, 2, 4]}
         with self.assertRaisesRegex(ValueError, "overlap"):
             _merge_mesh_cloth_regions([left, overlapping], document)
@@ -49,6 +60,8 @@ class MeshClothExportTests(unittest.TestCase):
         # Unity (0.8083963394 - y, z, -x) -> reflected glTF.
         matrix = [0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, -.8083963394, 0, 0, 1]
         self.assertEqual(_resample_mesh_fixed(vertices, matrix, selection), [0])
+        # Each render vertex joins the saved proxy point it is nearest to.
+        self.assertEqual(_resample_mesh_paint(vertices, matrix, selection)[1], [0, 1, 2, 3])
         # Duplicate render vertices at UV seams keep their own original index.
         self.assertEqual(_resample_mesh_fixed(vertices + [vertices[0]], matrix, selection), [0, 4])
         with self.assertRaisesRegex(ValueError, "outside saved paint coverage"):
@@ -108,7 +121,7 @@ class MeshClothExportTests(unittest.TestCase):
             result = _mesh_cloth_entries(component, exported, [2, 5])
             self.assertEqual(result, [{"node": 2, "primitive": 0, "fixed": [0, 2],
                 "radius": .006, "stiffness": 12., "damping": .8,
-                "gravity": [0., 0., 0.], "colliders": [2, 5]}])
+                "gravity": [0., 0., 0.], "colliders": [2, 5], "proxy": {"vertices": [0, 1, 0]}}])
             document["nodes"][2]["scale"] = [.5, .5, .5]
             self.assertAlmostEqual(_mesh_cloth_entries(component, exported, [])[0]["radius"], .012)
             del document["nodes"][2]["scale"]
