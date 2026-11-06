@@ -51,6 +51,15 @@ test("cloth fixed vertices must be in range and used by the primitive", () => {
   assert.throws(() => validate(value), /三角形顶点越界/);
 });
 
+test("cloth proxy clusters must cover every POSITION vertex", () => {
+  const value = fixture(); value.physics.cloths[0].proxy = { vertices: [0, 0, 1, 1] };
+  validate(value);
+  value.physics.cloths[0].proxy = { vertices: [0, 0, 1] };
+  assert.throws(() => validate(value), /proxy 顶点数/);
+  value.physics.cloths[0].proxy = { vertices: [0, 0, 1, -1] };
+  assert.throws(() => validate(value), /代理顶点无效/);
+});
+
 test("cloth index accessors support sparse updates", () => {
   const value = fixture();
   value.document.bufferViews.push({ buffer: 1, byteLength: 1 }, { buffer: 2, byteLength: 2 });

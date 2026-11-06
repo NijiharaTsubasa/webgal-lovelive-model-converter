@@ -226,12 +226,15 @@ def _magica2_particles(component: Any, mapping: Any) -> dict[tuple[int, int], tu
                   bool(flags[key] & 2), not bool(flags[key] & 16)) for key, distance in distances.items()}
 
 
-def _resample_mesh_fixed(vertices: Any, mesh_to_cloth: list[float], selection: Any) -> list[int]:
+def _resample_mesh_paint(vertices: Any, mesh_to_cloth: list[float], selection: Any) -> tuple[list[int], list[int]]:
     """Resample source proxy paint onto the original renderer's vertex order.
 
-    Saved Magica selection positions are reduced proxy points in cloth-local
-    space, not Mesh vertex indices. Nearest paint is our new solver's mapping;
-    it is not claimed equivalent to Magica's render-to-proxy interpolation.
+    Saved Magica selection positions are the reduced proxy points in cloth-local
+    space, not Mesh vertex indices: e.g. 154 points for a 1191 vertex skirt.
+    Each render vertex joins its nearest saved point, which both gives its paint
+    and reproduces the source proxy clustering (returned as one index per
+    vertex). Render vertices are then driven by those proxies; the weights are
+    our renderer's, not a claim of Magica's exact render-to-proxy mapping.
     Both input vertices and this matrix use the reflected glTF coordinate frame.
     """
     positions = [[-float(p.x), float(p.y), float(p.z)] for p in selection.positions]
@@ -245,7 +248,7 @@ def _resample_mesh_fixed(vertices: Any, mesh_to_cloth: list[float], selection: A
     maximum = float(selection.maxConnectionDistance)
     if not math.isfinite(maximum) or maximum <= 0:
         raise ValueError("MeshCloth paint requires a positive connection distance")
-    fixed = []
+    fixed, proxies = [], []
     for index, vertex in enumerate(vertices):
         point = _mat4_transform_point(mesh_to_cloth, [-float(vertex[0]), float(vertex[1]), float(vertex[2])])
         if not all(math.isfinite(value) for value in point):
@@ -259,9 +262,10 @@ def _resample_mesh_fixed(vertices: Any, mesh_to_cloth: list[float], selection: A
         # Unselected vertices stay on their skinned pose.
         if not attributes[nearest] & 2:
             fixed.append(index)
+        proxies.append(nearest)
     if not fixed or len(fixed) == len(vertices):
         raise ValueError("MeshCloth requires both fixed and moving vertices")
-    return fixed
+    return fixed, proxies
 
 
 def _mesh_cloth_entries(component: Any, exported: Any, indices: list[int]) -> list[dict[str, Any]]:
@@ -277,9 +281,9 @@ def _mesh_cloth_entries(component: Any, exported: Any, indices: list[int]) -> li
         decoded.process()
         transform = _transform(renderer)
         source_world = mapping.source_world[mapping.source_nodes[object_id(transform)]]
-        fixed = _resample_mesh_fixed(decoded.m_Vertices,
-                                    _mat4_mul(_mat4_inverse(cloth_world), source_world),
-                                    component.serializeData2.selectionData)
+        fixed, proxies = _resample_mesh_paint(decoded.m_Vertices,
+                                              _mat4_mul(_mat4_inverse(cloth_world), source_world),
+                                              component.serializeData2.selectionData)
         # The normalized exporter retains Mesh vertex order and shared POSITION
         # across submeshes. Its renderer node is separate from its source GO.
         candidates = [(i, node) for i, node in enumerate(document["nodes"])
@@ -318,7 +322,7 @@ def _mesh_cloth_entries(component: Any, exported: Any, indices: list[int]) -> li
         entries.append({"node": node_index, "primitive": 0, "fixed": fixed,
                         "radius": output_mapping.radius(transform, .003, target_node=node_index),
                         "stiffness": 12., "damping": .8, "gravity": [0., 0., 0.],
-                        "colliders": indices})
+                        "colliders": indices, "proxy": {"vertices": proxies}})
     if not entries:
         raise ValueError("MeshCloth has no source renderers")
     return entries
@@ -358,6 +362,21 @@ def _merge_mesh_cloth_regions(cloths: list[dict[str, Any]], document: dict[str, 
         combined["colliders"] = list(dict.fromkeys(
             collider for region in regions for collider in region["colliders"]
         ))
+        if all("proxy" in region for region in regions):
+            # Each component has its own proxy. A vertex keeps the proxy of the
+            # region moving it; still vertices keep the first region's (fixed)
+            # proxy. Offsets keep the regions' proxy indices apart.
+            offsets, offset = [], 0
+            for region in regions:
+                offsets.append(offset)
+                offset += max(region["proxy"]["vertices"]) + 1
+            vertices = [offsets[0] + index for index in regions[0]["proxy"]["vertices"]]
+            for region, start in zip(regions, offsets):
+                for vertex in all_vertices - set(region["fixed"]):
+                    vertices[vertex] = start + region["proxy"]["vertices"][vertex]
+            combined["proxy"] = {"vertices": vertices}
+        else:
+            combined.pop("proxy", None)
         merged.append(combined)
     return merged
 
