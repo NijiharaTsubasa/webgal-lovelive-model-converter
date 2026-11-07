@@ -7,6 +7,7 @@ from .meteor_material_mapping import MeteorMaterialMapping, initialized_menu_lay
 from .meteor_face_binding import finalize_body_face_frame
 from .meteor_material import MeteorMaterialExporter
 from .meteor_bounds import attach_renderer_bounds
+from .eyelid import attach_eyelid_bindings
 
 
 class _RendererWithMaterials:
@@ -63,6 +64,7 @@ class BangDreamModelAdapter(FaceBonesCopierAdapter):
     def finalize_export(self, exported: Any) -> None:
         finalize_body_face_frame(exported, role=self.role, prefab_pointer=self.prefab_pointer)
         attach_renderer_bounds(exported, self._exported_renderers, role=self.role)
+        attach_eyelid_bindings(exported, self._exported_renderers, role=self.role)
 
     def adapt_renderer(self, renderer: Any) -> Any:
         context = self.material_mapping.context_for_renderer(renderer)
