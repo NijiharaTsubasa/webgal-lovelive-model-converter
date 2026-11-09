@@ -36,6 +36,7 @@ import UnityPy
 from ..common.component_order import order_model_component
 from ..common.idle_pose import sample_baked_pose
 from ..common.physics import extract_model_physics
+from ..common.magica_prebuild import prebuild_magica_cloth2
 from ..common import (
     bundle_metadata,
     component_pointer,
@@ -504,6 +505,10 @@ def convert(
             compress_textures=True,
         )
         physics = extract_model_physics(environment, exported, source_springbone=True, source_magica=True)
+        prebuilt = prebuild_magica_cloth2(physics, package_name)
+        if prebuilt:
+            summary = ", ".join(f"{status} {count}" for status, count in sorted(prebuilt.items()))
+            print(f"[hasunosora:model] MagicaCloth2 预构建: {summary}", flush=True)
         behaviors = extract_sub_bone_behavior(root, exported)
 
         if has_expression_controller(dependencies):

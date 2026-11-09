@@ -26,6 +26,7 @@ MeshCloth without usable PreBuild data: the renderer builds the proxy mesh at ru
 original Unity mesh, so each SkinnedMeshRenderer reference in serializeData.sourceRenderers gets "meshData"
 (source_mesh: vertices / normals / tangents / uv0 / up to 4 bone weights and indices / bindposes column-major /
 triangles of all submeshes as little-endian {"base64"}, plus the bone and root bone transform ids).
+magica_prebuild.py can then run that build during the conversion ("runtimePreBuild"), dropping meshData again.
 Floats are float32 values written in their shortest round-trip form (Math.fround recovers the exact float32).
 """
 
