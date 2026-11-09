@@ -3,6 +3,7 @@
 import base64
 import struct
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace as NS
 
 from converter.common.source_magica import magica_cloth2_source
@@ -162,6 +163,58 @@ class SourceMagicaTests(unittest.TestCase):
         self.assertNotIn("localPositions", setup)            # the mesh copy is left to the GLB
         self.assertNotIn("boneWeightArray", setup)
         self.assertEqual(build["uniquePreBuildData"]["renderSetupDataList"][0]["transformList"], [{"transformId": sid(self.hips)}])
+
+    def test_mesh_cloth_without_prebuild_exports_the_original_mesh(self):
+        f = self.f
+        skirt = f.node("Skirt", self.root)
+        ident = dict(e00=1., e01=0., e02=0., e03=0., e10=0., e11=1., e12=0., e13=0., e20=0., e21=0., e22=1., e23=0.,
+                     e30=0., e31=0., e32=0., e33=1.)
+        bind = dict(ident, e13=-1.)   # translation y = -1 (row 1, column 3)
+        mesh = f.obj("Mesh", m_Name="Skirt", m_BindPose=[NS(**ident), NS(**bind)])
+        renderer = f.obj("SkinnedMeshRenderer", m_GameObject=skirt.m_GameObject, m_Mesh=Ptr(mesh), m_Enabled=1,
+                         m_Bones=[Ptr(self.root), Ptr(self.hips)], m_RootBone=Ptr(self.hips))
+        f.component(self.hips, "MagicaCloth", **cloth_fields(0, renderers=[renderer]))
+
+        class FakeHandler:   # UnityPy MeshHandler stand-in: decoded vertex channels
+            def __init__(self, m):
+                assert m is mesh
+                self.m_Vertices = [(0., 1., 2.), (3., 4., 5.), (6., 7., 8.)]
+                self.m_Normals = [(0., 1., 0.)] * 3
+                self.m_Tangents = [(1., 0., 0., -1.)] * 3
+                self.m_UV0 = [(.25, .5), (.5, .5), (.75, .5)]
+                self.m_BoneIndices = [(1, 0, 0, 0), (1, 0, 0, 0), (0, 1, 0, 0)]
+                self.m_BoneWeights = [(1., 0., 0., 0.), (1., 0., 0., 0.), (.75, .25, 0., 0.)]
+
+            def process(self):
+                pass
+
+            def get_triangles(self):
+                return [[(0, 1, 2)]]
+
+        with patch("converter.common.source_magica.MeshHandler", FakeHandler):
+            out = magica_cloth2_source(f.readers, self.mapping)
+            out_none = magica_cloth2_source(f.readers, self.mapping, mesh_data="none")
+        sid = lambda t: str(object_id(t)[1])
+        ref = next(c for c in out["components"] if c["class"] == "MagicaCloth")["fields"]["serializeData"]["sourceRenderers"][0]
+        md = ref["meshData"]
+
+        def unpack(field, code):
+            raw = base64.b64decode(field["base64"])
+            return struct.unpack(f"<{len(raw) // 4}{code}", raw)
+
+        self.assertEqual(md["vertexCount"], 3)
+        self.assertEqual(unpack(md["vertices"], "f"), (0, 1, 2, 3, 4, 5, 6, 7, 8))
+        self.assertEqual(unpack(md["tangents"], "f")[:4], (1, 0, 0, -1))
+        self.assertEqual(unpack(md["uv"], "f")[:2], (.25, .5))
+        self.assertEqual(unpack(md["boneIndices"], "i")[8:10], (0, 1))
+        self.assertEqual(unpack(md["boneWeights"], "f")[8:10], (.75, .25))
+        self.assertEqual(unpack(md["bindposes"], "f")[16 + 13], -1)   # column-major: column 3, row 1
+        self.assertEqual(unpack(md["triangles"], "i"), (0, 1, 2))
+        self.assertEqual(md["submeshTriangleCounts"], [1])
+        self.assertEqual(md["bones"], [sid(self.root), sid(self.hips)])
+        self.assertEqual(md["rootBone"], sid(self.hips))
+        ref_none = next(c for c in out_none["components"] if c["class"] == "MagicaCloth")["fields"]["serializeData"]["sourceRenderers"][0]
+        self.assertNotIn("meshData", ref_none)
 
     def test_prefab_without_enabled_magica_cloth_has_no_source_data(self):
         cloth = self.f.component(self.hips, "MagicaCloth", **cloth_fields(1, roots=[self.hair]))

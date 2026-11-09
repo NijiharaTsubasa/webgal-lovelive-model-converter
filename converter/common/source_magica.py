@@ -22,6 +22,10 @@ asset (same buildId) is embedded as "sharePreBuildData".  Its renderSetupDataLis
 original mesh (localPositions / localNormals / localTangents / bindPoseList / bonesPerVertexArray /
 boneWeightArray, 250+ KB per skirt): the GLB carries that mesh, and the render-vertex -> proxy mapping with the
 mesh-space vertex positions is in renderMeshList.
+MeshCloth without usable PreBuild data: the renderer builds the proxy mesh at runtime like the game, from the
+original Unity mesh, so each SkinnedMeshRenderer reference in serializeData.sourceRenderers gets "meshData"
+(source_mesh: vertices / normals / tangents / uv0 / up to 4 bone weights and indices / bindposes column-major /
+triangles of all submeshes as little-endian {"base64"}, plus the bone and root bone transform ids).
 Floats are float32 values written in their shortest round-trip form (Math.fround recovers the exact float32).
 """
 
@@ -30,6 +34,8 @@ from __future__ import annotations
 import base64
 import struct
 from typing import Any
+
+from UnityPy.helpers.MeshHelper import MeshHandler
 
 from .normalized_model import renderer_node_name
 from .source_common import TransformTable, in_model
@@ -76,8 +82,11 @@ def _kind(obj: Any) -> str:
     return obj.object_reader.type.name
 
 
-def magica_cloth2_source(readers: Any, mapping: Any, document: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    """Collect the prefab's MagicaCloth2 components verbatim; None when it has no enabled MagicaCloth."""
+def magica_cloth2_source(readers: Any, mapping: Any, document: dict[str, Any] | None = None,
+                         mesh_data: str = "runtime") -> dict[str, Any] | None:
+    """Collect the prefab's MagicaCloth2 components verbatim; None when it has no enabled MagicaCloth.
+    mesh_data: which MeshCloth renderers get "meshData" ("runtime": cloths without usable PreBuild data, "all",
+    "none")."""
     found = []
     for reader in readers:
         if reader.type.name != "MonoBehaviour":
@@ -173,5 +182,49 @@ def magica_cloth2_source(readers: Any, mapping: Any, document: dict[str, Any] | 
                     for k in MESH_COPY:
                         setup.pop(k, None)
                 build["sharePreBuildData"] = shared
+            prebuilt = bool(build and build.get("enabled") and build.get("sharePreBuildData"))
+            if int(data.clothType) == 0 and (mesh_data == "all" or (mesh_data == "runtime" and not prebuilt)):
+                for i, pointer in enumerate(data.sourceRenderers):
+                    if pointer and pointer.m_PathID:
+                        target = pointer.read()
+                        if _kind(target) == "SkinnedMeshRenderer" and target.m_Mesh:
+                            fields["serializeData"]["sourceRenderers"][i]["meshData"] = source_mesh(target, table)
         components.append({"class": cls, "transformId": table.add(transform), "fields": fields})
     return {"transforms": table.export(mapping), "components": components}
+
+
+def _pack(code: str, rows: Any, width: int) -> dict[str, str]:
+    flat = [v for row in rows for v in (list(row) + [0] * width)[:width]]
+    return {"base64": base64.b64encode(struct.pack(f"<{len(flat)}{code}", *flat)).decode("ascii")}
+
+
+def source_mesh(renderer: Any, table: TransformTable) -> dict[str, Any]:
+    """The renderer's mesh as MagicaCloth2's RenderSetupData reads it (Mesh API values, Unity's frame): what a
+    runtime MeshCloth build needs.  The GLB mesh is not a substitute: mirrored, re-skinned to the normalized
+    skeleton, UV V flipped."""
+    mesh = renderer.m_Mesh.read()
+    decoded = MeshHandler(mesh)
+    decoded.process()
+    count = len(decoded.m_Vertices)
+    bones = [table.add(b.read()) if b and b.m_PathID else None for b in renderer.m_Bones]
+    out: dict[str, Any] = {
+        "name": str(mesh.m_Name), "vertexCount": count,
+        "vertices": _pack("f", decoded.m_Vertices, 3),
+        "normals": _pack("f", decoded.m_Normals, 3),
+        "tangents": _pack("f", decoded.m_Tangents, 4) if decoded.m_Tangents else None,
+        "uv": _pack("f", decoded.m_UV0, 2) if decoded.m_UV0 else None,
+        "boneWeights": None, "boneIndices": None,
+        "bindposes": _pack("f", [[m.e00, m.e10, m.e20, m.e30, m.e01, m.e11, m.e21, m.e31, m.e02, m.e12, m.e22, m.e32,
+                                  m.e03, m.e13, m.e23, m.e33] for m in mesh.m_BindPose], 16),
+        "bones": bones,
+        "rootBone": table.add(renderer.m_RootBone.read()) if renderer.m_RootBone and renderer.m_RootBone.m_PathID else None,
+    }
+    if bones and decoded.m_BoneIndices:   # Mesh.GetAllBoneWeights: up to four weights per vertex, as stored
+        out["boneWeights"] = _pack("f", decoded.m_BoneWeights, 4)
+        out["boneIndices"] = _pack("i", decoded.m_BoneIndices, 4)
+    submeshes = [list(t) for t in decoded.get_triangles()]
+    out["triangles"] = _pack("i", [tri for sub in submeshes for tri in sub], 3)
+    out["submeshTriangleCounts"] = [len(sub) for sub in submeshes]
+    if len(decoded.m_Normals) != count or (decoded.m_Tangents and len(decoded.m_Tangents) != count):
+        raise ValueError(f"{mesh.m_Name}: vertex channel lengths differ")
+    return out
