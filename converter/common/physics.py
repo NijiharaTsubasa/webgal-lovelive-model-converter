@@ -13,6 +13,7 @@ from typing import Any
 
 from UnityPy.helpers.MeshHelper import MeshHandler
 
+from .source_magica import magica_cloth2_source
 from .source_springbone import unity_springbone_source
 
 from .unity import component_pointer, game_object_transform, object_id
@@ -386,11 +387,14 @@ def _merge_mesh_cloth_regions(cloths: list[dict[str, Any]], document: dict[str, 
     return merged
 
 
-def extract_model_physics(environment: Any, exported: Any, *, source_springbone: bool = False) -> dict[str, Any] | None:
+def extract_model_physics(environment: Any, exported: Any, *, source_springbone: bool = False,
+                          source_magica: bool = False) -> dict[str, Any] | None:
     """Extract declared bone and mesh cloth with shared collision geometry.
 
     source_springbone: export UnityChan SpringBone verbatim as physics.source.unitySpringBone for the renderer's
     source-faithful solver (the game's parameters and algorithm) instead of generic springs.
+    source_magica: also export MagicaCloth2 verbatim (with PreBuild data) as physics.source.magicaCloth2.  The
+    generic springs / cloths for MagicaCloth stay as a fallback until the renderer's MagicaCloth2 solver exists.
 
     Nodes refer to this component's GLB, never names shared across model parts.
     All source coordinates cross the common normalized-model mapping exactly
@@ -403,6 +407,10 @@ def extract_model_physics(environment: Any, exported: Any, *, source_springbone:
         unity_springbone = unity_springbone_source(environment.objects, mapping)
         if unity_springbone:
             source = {"unitySpringBone": unity_springbone}
+    if source_magica:
+        magica = magica_cloth2_source(environment.objects, mapping, exported.builder.document)
+        if magica:
+            source = {**(source or {}), "magicaCloth2": magica}
     colliders: list[dict[str, Any]] = []
     collider_indices: dict[tuple[int, int], list[int]] = {}
     springs: dict[int, dict[str, Any]] = {}
@@ -606,7 +614,7 @@ def extract_model_physics(environment: Any, exported: Any, *, source_springbone:
 
     for name, component in components:
         if name == 'SpringBone':
-            if source:   # simulated by the source-faithful solver, not as a generic spring
+            if source and "unitySpringBone" in source:   # simulated by the source-faithful solver
                 continue
             pointers = [*component.sphereColliders, *component.capsuleColliders, *component.panelColliders]
             indices = ground_by_bone.get(object_id(_transform(component)), []) + references(pointers)
