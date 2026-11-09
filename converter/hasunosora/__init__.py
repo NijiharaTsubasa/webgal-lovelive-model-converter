@@ -503,7 +503,7 @@ def convert(
             adapter=HasunosoraModelAdapter(environment, root),
             compress_textures=True,
         )
-        physics = extract_model_physics(environment, exported)
+        physics = extract_model_physics(environment, exported, source_springbone=True)
         behaviors = extract_sub_bone_behavior(root, exported)
 
         if has_expression_controller(dependencies):
