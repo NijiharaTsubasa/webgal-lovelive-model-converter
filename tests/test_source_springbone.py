@@ -145,6 +145,14 @@ class SourceSpringBoneTests(unittest.TestCase):
         # absent from the GLB: serialized local transform under its (posed) parent
         pivot = transforms[str(object_id(n["pivot"])[1])]
         self.assertEqual(pivot["localRotation"], [0, .7071068, 0, .7071068])
+        # the serialized prefab pose is kept where it differs (runtime builds read it), plus the child order
+        self.assertEqual(hips["prefabLocalRotation"], [0., 0., 0., 1.])
+        self.assertEqual(hips["prefabLocalPosition"], [0, 1, 0])
+        self.assertNotIn("prefabLocalRotation", bone)
+        self.assertNotIn("prefabLocalRotation", pivot)
+        self.assertIsNone(transforms[str(object_id(n["root"])[1])]["siblingIndex"])
+        self.assertEqual([bone["siblingIndex"], pivot["siblingIndex"]], [0, 1])
+        self.assertEqual(transforms[str(object_id(n["holder"])[1])]["siblingIndex"], 2)
 
     def test_prefab_without_enabled_manager_has_no_source_data(self):
         f, mapping, n = self.build()

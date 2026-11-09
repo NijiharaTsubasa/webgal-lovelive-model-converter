@@ -4,6 +4,11 @@ Transform ids are path ids as decimal strings (64-bit values do not survive JSON
 exported local transforms describe the pose the GLB rest pose was exported in: nodes present in the GLB take
 their Unity-baked neutral pose (mapping.neutral_world, reflected back to Unity's left-handed frame), nodes absent
 from the GLB keep their serialized local transform under that parent.  "node" is the GLB node index or null.
+
+Runtime builds (MagicaCloth2 without PreBuild) read the hierarchy as the game sees it when the prefab wakes up:
+"siblingIndex" is the transform's index in its parent's children (null for the root), and where the exported
+local transform differs from the serialized one, "prefabLocalPosition" / "prefabLocalRotation" / "prefabLocalScale"
+carry the serialized (prefab) values.
 """
 
 from __future__ import annotations
@@ -117,14 +122,40 @@ class TransformTable:
             parent_key = str(object_id(parent)[1]) if parent is not None else None
             own = world(transform)
             parent_world = world(parent) if parent is not None else None
+            p, r, s = transform.m_LocalPosition, transform.m_LocalRotation, transform.m_LocalScale
+            prefab = [p.x, p.y, p.z], [r.x, r.y, r.z, r.w], [s.x, s.y, s.z]
             if own is not None and (parent is None or parent_world is not None):
                 local = own if parent is None else mat_mul(inverse_affine(parent_world), own)
                 position, rotation, scale = decompose(local)
             else:   # not in the GLB: its serialized local transform under its (posed) parent
-                p, r, s = transform.m_LocalPosition, transform.m_LocalRotation, transform.m_LocalScale
-                position, rotation, scale = [p.x, p.y, p.z], [r.x, r.y, r.z, r.w], [s.x, s.y, s.z]
+                position, rotation, scale = prefab
             index = mapping.node_index(transform) if object_id(transform) in exported else None
-            out.append({"id": key, "name": transform.m_GameObject.read().m_Name, "parentId": parent_key,
-                        "localPosition": [float(v) for v in position], "localRotation": [float(v) for v in rotation],
-                        "localScale": [float(v) for v in scale], "node": index})
+            entry = {"id": key, "name": transform.m_GameObject.read().m_Name, "parentId": parent_key,
+                     "siblingIndex": sibling_index(transform, parent),
+                     "localPosition": [float(v) for v in position], "localRotation": [float(v) for v in rotation],
+                     "localScale": [float(v) for v in scale], "node": index}
+            if not same_local((position, rotation, scale), prefab):
+                entry["prefabLocalPosition"] = [float(v) for v in prefab[0]]
+                entry["prefabLocalRotation"] = [float(v) for v in prefab[1]]
+                entry["prefabLocalScale"] = [float(v) for v in prefab[2]]
+            out.append(entry)
         return out
+
+
+def sibling_index(transform: Any, parent: Any | None) -> int | None:
+    """Index of the transform in its parent's m_Children (Transform.GetSiblingIndex)."""
+    if parent is None:
+        return None
+    key = object_id(transform)
+    for index, child in enumerate(parent.m_Children):
+        if child and object_id(child.read()) == key:
+            return index
+    raise ValueError(f"source physics transform {key[1]} is missing from its parent's children")
+
+
+def same_local(a: tuple, b: tuple, tolerance: float = 1e-6) -> bool:
+    """Two local transforms (position, rotation x/y/z/w, scale) agree; q and -q are the same rotation."""
+    (pa, ra, sa), (pb, rb, sb) = a, b
+    if any(abs(x - y) > tolerance for x, y in zip(list(pa) + list(sa), list(pb) + list(sb))):
+        return False
+    return abs(abs(sum(x * y for x, y in zip(ra, rb))) - 1.) <= tolerance
