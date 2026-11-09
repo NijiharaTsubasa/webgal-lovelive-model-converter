@@ -394,7 +394,8 @@ def extract_model_physics(environment: Any, exported: Any, *, source_springbone:
     source_springbone: export UnityChan SpringBone verbatim as physics.source.unitySpringBone for the renderer's
     source-faithful solver (the game's parameters and algorithm) instead of generic springs.
     source_magica: also export MagicaCloth2 verbatim (with PreBuild data) as physics.source.magicaCloth2.  The
-    generic springs / cloths for MagicaCloth stay as a fallback until the renderer's MagicaCloth2 solver exists.
+    generic springs / cloths for MagicaCloth stay as a fallback: the renderer's MagicaCloth2 port replaces them on
+    the bones / meshes it simulates (PreBuild cloths) and keeps them for the rest.
 
     Nodes refer to this component's GLB, never names shared across model parts.
     All source coordinates cross the common normalized-model mapping exactly

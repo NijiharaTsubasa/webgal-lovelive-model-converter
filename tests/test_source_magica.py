@@ -131,7 +131,8 @@ class SourceMagicaTests(unittest.TestCase):
                                 edges=list(struct.pack("<2i", 0, 1))),
                    renderSetupDataList=[NS(name="Skirt", vertexCount=2, originalMesh=Ptr(mesh),
                                            localPositions=[NS(x=0., y=0., z=0.)] * 2, boneWeightArray=[0] * 16)],
-                   renderMeshList=[])
+                   renderMeshList=[],
+                   bendingConstraintData=NS(trianglePairArray=[11540877774880812, 2 ** 64 - 1]))
         other = NS(version=2, buildId="Extension_MagicaCloth_Other", proxyMesh=NS(), renderSetupDataList=[], renderMeshList=[])
         asset = f.obj("MonoBehaviour", m_Name="MagicaPreBuild_Test", m_GameObject=Ptr(),
                       m_Script=Ptr(f.obj("MonoScript", m_ClassName="PreBuildScriptableObject")),
@@ -153,6 +154,9 @@ class SourceMagicaTests(unittest.TestCase):
         pos = base64.b64decode(shared["proxyMesh"]["localPositions"]["arrayBytes"]["base64"])
         self.assertEqual(struct.unpack("<6f", pos), (0, 1, 2, 3, 4, 5))
         self.assertEqual(struct.unpack("<2i", base64.b64decode(shared["proxyMesh"]["edges"]["base64"])), (0, 1))
+        # ulong pairs above 2^53 survive as little-endian uint64 bytes (a JSON number would round them)
+        pairs = base64.b64decode(shared["bendingConstraintData"]["trianglePairArray"]["base64"])
+        self.assertEqual(struct.unpack("<2Q", pairs), (11540877774880812, 2 ** 64 - 1))
         setup = shared["renderSetupDataList"][0]
         self.assertEqual(setup["originalMesh"], {"mesh": {"name": "Skirt", "node": 1, "primitives": 1}})
         self.assertNotIn("localPositions", setup)            # the mesh copy is left to the GLB

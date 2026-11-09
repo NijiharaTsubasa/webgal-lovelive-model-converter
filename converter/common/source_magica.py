@@ -14,7 +14,8 @@ References become objects instead of path ids:
   Texture2D                        {"texture"}
 Raw byte arrays (ExSimpleNativeArray arrayBytes and the VirtualMesh / RenderSetupData byte[] fields) are
 {"base64": ...}: little-endian structs exactly as MagicaCloth2 serializes them (layouts: MagicaCloth2 source,
-VirtualMeshSerialization.cs / RenderSetupDataSerialization.cs).
+VirtualMeshSerialization.cs / RenderSetupDataSerialization.cs).  ulong arrays (TriangleBending
+trianglePairArray) are {"base64": ...} little-endian uint64 as well: JSON numbers lose bits above 2^53.
 PreBuild: MagicaCloth.serializeData2.preBuildData keeps "enabled", "buildId", "uniquePreBuildData"; its
 "preBuildScriptableObject" reference becomes {"asset", "class"} and the matching SharePreBuildData entry of that
 asset (same buildId) is embedded as "sharePreBuildData".  Its renderSetupDataList entries drop the copy of the
@@ -48,6 +49,8 @@ BYTE_FIELDS = {
     # RenderSetupData.ShareSerializationData
     "bonesPerVertexArray", "boneWeightArray",
 }
+# ulong arrays: values above 2^53 do not survive a JSON number, so they are little-endian uint64 bytes too
+U64_FIELDS = {"trianglePairArray"}
 
 
 MESH_COPY = {"localPositions", "localNormals", "localTangents", "bindPoseList", "bonesPerVertexArray", "boneWeightArray"}
@@ -137,6 +140,8 @@ def magica_cloth2_source(readers: Any, mapping: Any, document: dict[str, Any] | 
         if key in BYTE_FIELDS and isinstance(tree, (list, bytes, bytearray)) \
                 and all(isinstance(x, int) and 0 <= x < 256 for x in tree):
             return {"base64": base64.b64encode(bytes(tree)).decode("ascii")}
+        if key in U64_FIELDS and isinstance(tree, list):
+            return {"base64": base64.b64encode(struct.pack(f"<{len(tree)}Q", *tree)).decode("ascii")}
         if isinstance(tree, list):
             objects = obj if isinstance(obj, (list, tuple)) and len(obj) == len(tree) else [None] * len(tree)
             return [convert(v, o) for v, o in zip(tree, objects)]
