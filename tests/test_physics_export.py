@@ -64,7 +64,7 @@ class PhysicsFixture:
                          p[i] + n.position[i] - self.nodes[node_index(n) if target_node is None else target_node].position[i]
                          for i in range(3)],
                      radius=lambda n, r, target_node=None: r,
-                     direction=lambda n, d: d,
+                     direction=lambda n, d, target_node=None: d,
                      normal=lambda n, d: d,
                      canonical_world=[[1,0,0,0, 0,1,0,0, 0,0,1,0, *node.position,1] for node in self.nodes],
                      source_nodes={object_id(node): node.index for node in self.nodes if node.index not in missing},
@@ -177,7 +177,7 @@ class PhysicsExportTests(unittest.TestCase):
         bone, child, leg, knee = [f.node(p) for p in ([0, 0, 0], [0, -1, 0], [.1, 0, 0], [.1, -.5, 0])]
         end = f.component(knee, "SwingCollider", radius=.1, offset=vec(), sibling=None)
         collider = f.component(leg, "SwingCollider", radius=.2, offset=vec(0, .01, 0), sibling=Ptr(end))
-        f.component(bone, "SwingBone", child=Ptr(child), radius=.02,
+        f.component(bone, "SwingBone", child=Ptr(child), boneAxis=vec(0, -1, 0), radius=.02,
                     colliders=[Ptr(collider), Ptr(collider)])
         result = f.extract()
         self.assertEqual(len(result["colliders"]), 1)
@@ -189,7 +189,7 @@ class PhysicsExportTests(unittest.TestCase):
     def test_core_humanoid_nodes_never_driven(self):
         f = PhysicsFixture()
         bone, child = f.node([0, 0, 0]), f.node([0, 1, 0])
-        f.component(bone, "SwingBone", child=Ptr(child), radius=.02, colliders=[])
+        f.component(bone, "SwingBone", child=Ptr(child), boneAxis=vec(0, 1, 0), radius=.02, colliders=[])
         self.assertIsNone(f.extract(core=[0]))
 
     def test_models_without_physics_emit_nothing(self):
@@ -320,11 +320,21 @@ class PhysicsExportTests(unittest.TestCase):
         bone,child,collider_node=[f.node(p) for p in ([0,0,0],[0,-1,0],[0,0,0])]
         collider=f.component(collider_node,'MagicaCapsuleCollider',center=vec(),axis=0,
                              length=.4,startRadius=.15,endRadius=.05)
-        f.component(bone,'SwingBone',child=Ptr(child),radius=.02,colliders=[Ptr(collider)])
+        f.component(bone,'SwingBone',child=Ptr(child),boneAxis=vec(0,-1,0),radius=.02,colliders=[Ptr(collider)])
         result=f.extract()
         self.assertGreaterEqual(len(result['colliders']),20)
         self.assertLessEqual(result['colliders'][-1]['radius'],.05500001)
         self.assertEqual(result['springs'][0]['colliders'],list(range(len(result['colliders']))))
+
+
+    def test_llas_cross_chain_child_supplies_length_not_swing_direction(self):
+        # LLAS SwingBone.Initialize (0x2CB2D5C) reads child distance, while
+        # UpdateSwingBone (0x2CB36A8) rotates its independent boneAxis.
+        f = PhysicsFixture()
+        bone, sibling = f.node([0, 0, 0]), f.node([0, .15, 0])
+        f.component(bone, 'SwingBone', child=Ptr(sibling), boneAxis=vec(-1, 0, 0),
+                    radius=.02, colliders=[])
+        self.assertEqual(f.extract()['springs'][0]['tail'], [-.15, 0., 0.])
 
 
 if __name__ == "__main__":

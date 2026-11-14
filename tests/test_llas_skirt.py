@@ -53,8 +53,8 @@ class LlasSkirtTests(unittest.TestCase):
         f = PhysicsFixture()
         a, at, b, bt, leg = [f.node(p) for p in ([0,0,0], [-.2,0,0], [0,0,0], [.2,0,0], [0,0,0])]
         collider = f.component(leg, 'SwingCollider', radius=.1, offset=vec(), sibling=None)
-        ca = f.component(a, 'SwingBone', child=Ptr(at), radius=.02, colliders=[Ptr(collider)])
-        cb = f.component(b, 'SwingBone', child=Ptr(bt), radius=.03, colliders=[Ptr(collider)], sibling=Ptr(ca))
+        ca = f.component(a, 'SwingBone', child=Ptr(at), boneAxis=vec(-1,0,0), radius=.02, colliders=[Ptr(collider)])
+        cb = f.component(b, 'SwingBone', child=Ptr(bt), boneAxis=vec(1,0,0), radius=.03, colliders=[Ptr(collider)], sibling=Ptr(ca))
         ca.sibling = Ptr(cb)
         data = f.extract()
         self.assertEqual(data['collisionEdges'], [{'springs':[0,1], 'colliders':[0]}])

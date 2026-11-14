@@ -79,6 +79,28 @@ def spring_bone_tail(component: Any, mapping: Any) -> list[float]:
     return list(_mat4_transform_point(_mat4_inverse(matrix), endpoint))
 
 
+def swing_bone_tail(component: Any, mapping: Any) -> list[float]:
+    """LLAS child sets length; boneAxis independently sets the swing direction.
+
+    Initialize (0x2CB2D5C) measures the child world distance. UpdateSwingBone
+    (0x2CB36A8, 0x2CB3C2C) uses rotation * boneAxis for the restoring force
+    and rotation output. A child may belong to another chain.
+    """
+    transform = _transform(component)
+    node = mapping.node_index(transform)
+    matrix = mapping.canonical_world[node]
+    origin = _mat4_transform_point(matrix, [0., 0., 0.])
+    child = mapping.point(_read(component.child), [0., 0., 0.], target_node=node)
+    endpoint = _mat4_transform_point(matrix, child)
+    distance = math.dist(origin, endpoint)
+    axis = mapping.direction(transform, _vector(component.boneAxis), target_node=node)
+    axis_end = _mat4_transform_point(matrix, axis)
+    direction = [axis_end[i] - origin[i] for i in range(3)]
+    length = math.sqrt(sum(x*x for x in direction))
+    endpoint = [origin[i] + (direction[i] * distance / length if length else 0.) for i in range(3)]
+    return list(_mat4_transform_point(_mat4_inverse(matrix), endpoint))
+
+
 def capsule_endpoints(component: Any, *, magica2: bool) -> tuple[list[float], list[float], float]:
     """Decode Magica geometry, not its dynamics.
 
@@ -601,8 +623,8 @@ def extract_model_physics(environment: Any, exported: Any) -> dict[str, Any] | N
                    tail=spring_bone_tail(component, mapping))
         elif name == "SwingBone":
             if component.child:
-                spring(_transform(component), component.child.read(), float(component.radius),
-                       references(component.colliders))
+                spring(_transform(component), None, float(component.radius),
+                       references(component.colliders), tail=swing_bone_tail(component, mapping))
         elif name == "MagicaBoneCloth":
             # Original MC1 VerifyData (BG RVA 0x587E474) rejects null clothData
             # or meshData with ClothDataNull/MeshDataNull; CoreComponent.Init
