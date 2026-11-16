@@ -391,6 +391,7 @@ npm run export:garupa-live2d
 | `tools/model-preview-renderer.js` | 使用渲染器加载模型、按上半身构图并生成透明 WebP。 | `tools/generate-model-previews.mjs` |
 | `tools/glb-reference-validation.mjs` | 检查表情引用的 GLB 节点和 Morph Target 是否存在、名称是否重复，以及权重是否为有限数值。不能直接运行。 | `tools/validate-resource-packages.mjs` 和 `tests/glb-reference-validation.test.js` |
 | `tools/preview-parameter-input.mjs` | 读取 `.mtn_exp/model.json`，为预览页提供参数资源列表和源文件。 | `vite.config.js` 和 `tests/preview-parameter-input.test.js` |
+| `tools/prebuild-magica-cloth2.mjs` | 用渲染器依赖里的 MagicaCloth2 运行时构建，在转换时预先构建没有 PreBuild 的布料，结果写成 `runtimePreBuild`，渲染器加载时不用再构建（冷启动每套服装省 150–220 ms）。从标准输入读 `physics.source.magicaCloth2`，只输出新生成的数据。需要 `npm install` 装好渲染器依赖；运行失败时会打印警告，模型保留 `meshData`，由渲染器在加载时构建。 | `converter/common/magica_prebuild.py`（莲之空转换每个模型调用一次） |
 
 第一张表中的脚本也有相互调用：`tools/validate-resource-packages.mjs` 会调用 `tools/validate-all-motions.mjs` 导出的 `readMotionFile()` 和 `validateData()` 读取并检查动作数据。后者既能独立执行，也能作为前者的依赖。
 
