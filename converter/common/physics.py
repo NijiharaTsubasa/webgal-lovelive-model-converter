@@ -13,6 +13,9 @@ from typing import Any
 
 from UnityPy.helpers.MeshHelper import MeshHandler
 
+from .source_magica import magica_cloth2_source
+from .source_springbone import unity_springbone_source
+
 from .unity import component_pointer, game_object_transform, object_id
 from .normalized_model import (
     _mat4_inverse, _mat4_mul, _mat4_transform_point, _trs_to_mat, renderer_node_name,
@@ -248,15 +251,12 @@ def _magica2_particles(component: Any, mapping: Any) -> dict[tuple[int, int], tu
                   bool(flags[key] & 2), not bool(flags[key] & 16)) for key, distance in distances.items()}
 
 
-def _resample_mesh_paint(vertices: Any, mesh_to_cloth: list[float], selection: Any) -> tuple[list[int], list[int]]:
+def _resample_mesh_fixed(vertices: Any, mesh_to_cloth: list[float], selection: Any) -> list[int]:
     """Resample source proxy paint onto the original renderer's vertex order.
 
-    Saved Magica selection positions are the reduced proxy points in cloth-local
-    space, not Mesh vertex indices: e.g. 154 points for a 1191 vertex skirt.
-    Each render vertex joins its nearest saved point, which both gives its paint
-    and reproduces the source proxy clustering (returned as one index per
-    vertex). Render vertices are then driven by those proxies; the weights are
-    our renderer's, not a claim of Magica's exact render-to-proxy mapping.
+    Saved Magica selection positions are reduced proxy points in cloth-local
+    space, not Mesh vertex indices. Nearest paint is our new solver's mapping;
+    it is not claimed equivalent to Magica's render-to-proxy interpolation.
     Both input vertices and this matrix use the reflected glTF coordinate frame.
     """
     positions = [[-float(p.x), float(p.y), float(p.z)] for p in selection.positions]
@@ -270,7 +270,7 @@ def _resample_mesh_paint(vertices: Any, mesh_to_cloth: list[float], selection: A
     maximum = float(selection.maxConnectionDistance)
     if not math.isfinite(maximum) or maximum <= 0:
         raise ValueError("MeshCloth paint requires a positive connection distance")
-    fixed, proxies = [], []
+    fixed = []
     for index, vertex in enumerate(vertices):
         point = _mat4_transform_point(mesh_to_cloth, [-float(vertex[0]), float(vertex[1]), float(vertex[2])])
         if not all(math.isfinite(value) for value in point):
@@ -284,10 +284,9 @@ def _resample_mesh_paint(vertices: Any, mesh_to_cloth: list[float], selection: A
         # Unselected vertices stay on their skinned pose.
         if not attributes[nearest] & 2:
             fixed.append(index)
-        proxies.append(nearest)
     if not fixed or len(fixed) == len(vertices):
         raise ValueError("MeshCloth requires both fixed and moving vertices")
-    return fixed, proxies
+    return fixed
 
 
 def _mesh_cloth_entries(component: Any, exported: Any, indices: list[int]) -> list[dict[str, Any]]:
@@ -303,9 +302,9 @@ def _mesh_cloth_entries(component: Any, exported: Any, indices: list[int]) -> li
         decoded.process()
         transform = _transform(renderer)
         source_world = mapping.source_world[mapping.source_nodes[object_id(transform)]]
-        fixed, proxies = _resample_mesh_paint(decoded.m_Vertices,
-                                              _mat4_mul(_mat4_inverse(cloth_world), source_world),
-                                              component.serializeData2.selectionData)
+        fixed = _resample_mesh_fixed(decoded.m_Vertices,
+                                    _mat4_mul(_mat4_inverse(cloth_world), source_world),
+                                    component.serializeData2.selectionData)
         # The normalized exporter retains Mesh vertex order and shared POSITION
         # across submeshes. Its renderer node is separate from its source GO.
         candidates = [(i, node) for i, node in enumerate(document["nodes"])
@@ -344,7 +343,7 @@ def _mesh_cloth_entries(component: Any, exported: Any, indices: list[int]) -> li
         entries.append({"node": node_index, "primitive": 0, "fixed": fixed,
                         "radius": output_mapping.radius(transform, .003, target_node=node_index),
                         "stiffness": 12., "damping": .8, "gravity": [0., 0., 0.],
-                        "colliders": indices, "proxy": {"vertices": proxies}})
+                        "colliders": indices})
     if not entries:
         raise ValueError("MeshCloth has no source renderers")
     return entries
@@ -384,27 +383,19 @@ def _merge_mesh_cloth_regions(cloths: list[dict[str, Any]], document: dict[str, 
         combined["colliders"] = list(dict.fromkeys(
             collider for region in regions for collider in region["colliders"]
         ))
-        if all("proxy" in region for region in regions):
-            # Each component has its own proxy. A vertex keeps the proxy of the
-            # region moving it; still vertices keep the first region's (fixed)
-            # proxy. Offsets keep the regions' proxy indices apart.
-            offsets, offset = [], 0
-            for region in regions:
-                offsets.append(offset)
-                offset += max(region["proxy"]["vertices"]) + 1
-            vertices = [offsets[0] + index for index in regions[0]["proxy"]["vertices"]]
-            for region, start in zip(regions, offsets):
-                for vertex in all_vertices - set(region["fixed"]):
-                    vertices[vertex] = start + region["proxy"]["vertices"][vertex]
-            combined["proxy"] = {"vertices": vertices}
-        else:
-            combined.pop("proxy", None)
         merged.append(combined)
     return merged
 
 
-def extract_model_physics(environment: Any, exported: Any) -> dict[str, Any] | None:
+def extract_model_physics(environment: Any, exported: Any, *, source_springbone: bool = False,
+                          source_magica: bool = False) -> dict[str, Any] | None:
     """Extract declared bone and mesh cloth with shared collision geometry.
+
+    source_springbone: export UnityChan SpringBone verbatim as physics.source.unitySpringBone for the renderer's
+    source-faithful solver (the game's parameters and algorithm) instead of generic springs.
+    source_magica: also export MagicaCloth2 verbatim (with PreBuild data) as physics.source.magicaCloth2.  The
+    generic springs / cloths for MagicaCloth stay as a fallback: the renderer's MagicaCloth2 port replaces them on
+    the bones / meshes it simulates (PreBuild cloths) and keeps them for the rest.
 
     Nodes refer to this component's GLB, never names shared across model parts.
     All source coordinates cross the common normalized-model mapping exactly
@@ -412,6 +403,15 @@ def extract_model_physics(environment: Any, exported: Any) -> dict[str, Any] | N
     """
     mapping = exported.node_mapping
     core = set(exported.standard_bones.values())
+    source = None
+    if source_springbone:
+        unity_springbone = unity_springbone_source(environment.objects, mapping)
+        if unity_springbone:
+            source = {"unitySpringBone": unity_springbone}
+    if source_magica:
+        magica = magica_cloth2_source(environment.objects, mapping, exported.builder.document)
+        if magica:
+            source = {**(source or {}), "magicaCloth2": magica}
     colliders: list[dict[str, Any]] = []
     collider_indices: dict[tuple[int, int], list[int]] = {}
     springs: dict[int, dict[str, Any]] = {}
@@ -615,6 +615,8 @@ def extract_model_physics(environment: Any, exported: Any) -> dict[str, Any] | N
 
     for name, component in components:
         if name == 'SpringBone':
+            if source and "unitySpringBone" in source:   # simulated by the source-faithful solver
+                continue
             pointers = [*component.sphereColliders, *component.capsuleColliders, *component.panelColliders]
             indices = ground_by_bone.get(object_id(_transform(component)), []) + references(pointers)
             # Source takes the magnitude of TransformDirection(radius,0,0).
@@ -660,9 +662,11 @@ def extract_model_physics(environment: Any, exported: Any) -> dict[str, Any] | N
                     chain(root, particles, indices, seen, _transform(component))
     if cloths:
         cloths = _merge_mesh_cloth_regions(cloths, exported.builder.document)
-    if not springs and not cloths:
+    if not springs and not cloths and not source:
         return None
     result = {"colliders": colliders, "springs": list(springs.values())}
+    if source:
+        result["source"] = source
     spring_indices = {node: index for index, node in enumerate(springs)}
     collision_edges = []
     seen_edges = set()
