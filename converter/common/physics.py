@@ -13,9 +13,6 @@ from typing import Any
 
 from UnityPy.helpers.MeshHelper import MeshHandler
 
-from .source_magica import magica_cloth2_source
-from .source_springbone import unity_springbone_source
-
 from .unity import component_pointer, game_object_transform, object_id
 from .normalized_model import (
     _mat4_inverse, _mat4_mul, _mat4_transform_point, _trs_to_mat, renderer_node_name,
@@ -387,15 +384,8 @@ def _merge_mesh_cloth_regions(cloths: list[dict[str, Any]], document: dict[str, 
     return merged
 
 
-def extract_model_physics(environment: Any, exported: Any, *, source_springbone: bool = False,
-                          source_magica: bool = False) -> dict[str, Any] | None:
+def extract_model_physics(environment: Any, exported: Any) -> dict[str, Any] | None:
     """Extract declared bone and mesh cloth with shared collision geometry.
-
-    source_springbone: export UnityChan SpringBone verbatim as physics.source.unitySpringBone for the renderer's
-    source-faithful solver (the game's parameters and algorithm) instead of generic springs.
-    source_magica: also export MagicaCloth2 verbatim (with PreBuild data) as physics.source.magicaCloth2.  The
-    generic springs / cloths for MagicaCloth stay as a fallback: the renderer's MagicaCloth2 port replaces them on
-    the bones / meshes it simulates (PreBuild cloths) and keeps them for the rest.
 
     Nodes refer to this component's GLB, never names shared across model parts.
     All source coordinates cross the common normalized-model mapping exactly
@@ -403,15 +393,6 @@ def extract_model_physics(environment: Any, exported: Any, *, source_springbone:
     """
     mapping = exported.node_mapping
     core = set(exported.standard_bones.values())
-    source = None
-    if source_springbone:
-        unity_springbone = unity_springbone_source(environment.objects, mapping)
-        if unity_springbone:
-            source = {"unitySpringBone": unity_springbone}
-    if source_magica:
-        magica = magica_cloth2_source(environment.objects, mapping, exported.builder.document)
-        if magica:
-            source = {**(source or {}), "magicaCloth2": magica}
     colliders: list[dict[str, Any]] = []
     collider_indices: dict[tuple[int, int], list[int]] = {}
     springs: dict[int, dict[str, Any]] = {}
@@ -615,8 +596,6 @@ def extract_model_physics(environment: Any, exported: Any, *, source_springbone:
 
     for name, component in components:
         if name == 'SpringBone':
-            if source and "unitySpringBone" in source:   # simulated by the source-faithful solver
-                continue
             pointers = [*component.sphereColliders, *component.capsuleColliders, *component.panelColliders]
             indices = ground_by_bone.get(object_id(_transform(component)), []) + references(pointers)
             # Source takes the magnitude of TransformDirection(radius,0,0).
@@ -662,11 +641,9 @@ def extract_model_physics(environment: Any, exported: Any, *, source_springbone:
                     chain(root, particles, indices, seen, _transform(component))
     if cloths:
         cloths = _merge_mesh_cloth_regions(cloths, exported.builder.document)
-    if not springs and not cloths and not source:
+    if not springs and not cloths:
         return None
     result = {"colliders": colliders, "springs": list(springs.values())}
-    if source:
-        result["source"] = source
     spring_indices = {node: index for index, node in enumerate(springs)}
     collision_edges = []
     seen_edges = set()

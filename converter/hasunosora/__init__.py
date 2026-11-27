@@ -35,8 +35,9 @@ import UnityPy
 
 from ..common.component_order import order_model_component
 from ..common.idle_pose import sample_baked_pose
-from ..common.physics import extract_model_physics
 from ..common.magica_prebuild import prebuild_magica_cloth2
+from ..common.source_magica import magica_cloth2_source
+from ..common.source_springbone import unity_springbone_source
 from ..common import (
     bundle_metadata,
     component_pointer,
@@ -430,6 +431,19 @@ def build_expression_package(
     return deduplicate_mouth_series(result)
 
 
+def extract_hasunosora_physics(environment: Any, exported: NormalizedExport) -> dict[str, Any] | None:
+    source = {}
+    springbone = unity_springbone_source(environment.objects, exported.node_mapping)
+    if springbone:
+        source["unitySpringBone"] = springbone
+    magica = magica_cloth2_source(environment.objects, exported.node_mapping, exported.builder.document)
+    if magica:
+        source["magicaCloth2"] = magica
+    if not source:
+        return None
+    return {"source": source}
+
+
 def convert(
     input_dir: Path, output_dir: Path, baked_dir: Path | None, clean: bool,
     *, model_names: list[str] | None = None, models_only: bool = False,
@@ -504,7 +518,7 @@ def convert(
             adapter=HasunosoraModelAdapter(environment, root),
             compress_textures=True,
         )
-        physics = extract_model_physics(environment, exported, source_springbone=True, source_magica=True)
+        physics = extract_hasunosora_physics(environment, exported)
         prebuilt = prebuild_magica_cloth2(physics, package_name)
         if prebuilt:
             summary = ", ".join(f"{status} {count}" for status, count in sorted(prebuilt.items()))

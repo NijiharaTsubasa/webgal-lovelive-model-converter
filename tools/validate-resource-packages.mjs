@@ -107,11 +107,11 @@ export function validatePhysicsReferences(document, buffers, physics) {
     require(Number.isSafeInteger(index) && index >= 0 && document.nodes?.[index], `physics node ${index} 不存在`);
     return document.nodes[index];
   };
-  for (const collider of physics.colliders) {
+  for (const collider of physics.colliders ?? []) {
     node(collider.node);
     if (collider.tail) node(collider.tail.node);
   }
-  for (const spring of physics.springs) {
+  for (const spring of physics.springs ?? []) {
     require(!HUMANOID_BONE_NAMES.has(node(spring.node).name), `摆动骨不能控制核心骨 ${spring.node}`);
   }
   for (const cloth of physics.cloths || []) {

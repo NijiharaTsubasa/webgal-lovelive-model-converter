@@ -4,7 +4,7 @@ import math
 import unittest
 from types import SimpleNamespace as NS
 
-from converter.common.physics import extract_model_physics
+from converter.hasunosora import extract_hasunosora_physics
 from converter.common.source_springbone import unity_springbone_source, _unity_from_gltf
 from converter.common.unity import object_id
 
@@ -166,9 +166,9 @@ class SourceSpringBoneTests(unittest.TestCase):
         f, mapping, n = self.build()
         mapping.canonical_world = [unity_trs((0, 0, 0), (0, 0, 0, 1))] * 20
         mapping.source_world = mapping.neutral_world
-        result = extract_model_physics(NS(objects=f.readers), NS(node_mapping=mapping, standard_bones={}),
-                                       source_springbone=True)
-        self.assertEqual(result["springs"], [])
+        result = extract_hasunosora_physics(
+            NS(objects=f.readers), NS(node_mapping=mapping, builder=NS(document={})))
+        self.assertEqual(set(result), {"source"})
         self.assertIn("unitySpringBone", result["source"])
         self.assertEqual(len(result["source"]["unitySpringBone"]["components"]), 4)
 

@@ -31,6 +31,17 @@ test("physics references accept valid indexed and nonindexed skinned cloth", () 
   value.document.accessors[0].count = 3; validate(value);
 });
 
+test("physics references accept source data and cloth without generic arrays", () => {
+  const value = fixture();
+  const [cloth] = value.physics.cloths;
+  value.physics = { source: { magicaCloth2: { transforms: [], components: [] } } };
+  validate(value);
+  value.physics = { cloths: [{ ...cloth, colliders: [] }] };
+  validate(value);
+  value.physics.cloths[0].colliders = [0];
+  assert.throws(() => validate(value), /碰撞引用无效/);
+});
+
 test("physics references reject missing collider endpoints, core springs and invalid primitives", () => {
   let value = fixture(); value.physics.colliders[0].tail.node = 99;
   assert.throws(() => validate(value), /node 99/);
